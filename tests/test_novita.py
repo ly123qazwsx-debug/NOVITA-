@@ -83,6 +83,40 @@ def test_metrics_do_not_slide_to_older_month():
         calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
 
 
+def test_mom_uses_august_footer_not_july_sd_anomaly():
+    """sd 7.12-7.14 异常很大，分项环比必须用 8 月表底上月同期，不能按 7 月逐日相加。"""
+    from src.data_fetcher import parse_sheet_mom_summary
+
+    rows = [
+        ["年", "月", "单位: 美元", "LLM", "sd", "GPU (按需)", "GPU (按需存储)", "GPU 固定", "NOVITA 总消耗"],
+        [2026, 7, "7月12日", 300, 8000, 5, 20, 1400, 9725],
+        [2026, 7, "7月13日", 300, 8000, 5, 20, 1400, 9725],
+        [2026, 7, "7月14日", 300, 8000, 5, 20, 1400, 9725],
+        [2026, 8, "8月1日", 295.9, 167.42, 0, 37.56, 260, 760.88],
+        [2026, 8, "8月19日", 545.17, 107.86, 0, 37.56, 1300, 1990.59],
+        ["", "", "08月 当期合计值", 6793.52, 2398.50, 128.73, 525.84, 31095.51, 40942.11],
+        ["", "", "08月 上月同期合计值", 5256.78, 2782.87, 773.17, 500.22, 24376.68, 33689.72],
+        ["", "", "08月 环比率", "29%", "-14%", "-83%", "5%", "28%", "22%"],
+    ]
+    parsed = parse_sheet_mom_summary(rows)
+    assert parsed[8]["previous"]["sd"] == 2782.87
+    assert parsed[8]["rate"]["sd"] == -14
+    assert parsed[8]["rate"]["total_with_fixed"] == 22
+
+    df = parse_novita_rows(rows)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+    assert metrics.mom_source == "sheet_footer"
+    assert abs(metrics.mom_changes["sd"]["previous"] - 2782.87) < 1e-6
+    assert abs(metrics.mom_changes["sd"]["current"] - 2398.50) < 1e-6
+    assert int(round(metrics.mom_changes["sd"]["rate"])) == -14
+    assert int(round(metrics.mom_changes["llm"]["rate"])) == 29
+    assert int(round(metrics.mom_changes["gpu_ondemand"]["rate"])) == -83
+    assert abs(metrics.mom_changes["total_with_fixed"]["current"] - 40942.11) < 1e-6
+    assert int(round(metrics.overview[0]["rate"])) == 22
+    # 若误用 7 月逐日，sd 上月会远大于表底 2782
+    assert metrics.mom_changes["sd"]["previous"] < 5000
+
+
 def test_parse_sheet_forecast_override():
     from src.data_fetcher import parse_sheet_overrides
 

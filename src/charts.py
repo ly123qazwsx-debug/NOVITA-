@@ -411,6 +411,54 @@ def pd_day(d) -> str:
     return str(d)
 
 
+def _plot_mom_compare(ax, metrics: ReportMetrics) -> None:
+    """用表底当期 / 上月同期画分项对比，柱顶标环比率（sd 异常已在表底剔除）。"""
+    _style_ax(ax)
+    cur_m = metrics.current_period.end.month
+    prev_m = metrics.previous_period.end.month
+    keys = list(COST_COLUMNS)
+    labels = [CATEGORY_LABELS[k] for k in keys]
+    current = [metrics.mom_changes[k]["current"] for k in keys]
+    previous = [metrics.mom_changes[k]["previous"] for k in keys]
+    rates = [metrics.mom_changes[k]["rate"] for k in keys]
+
+    x = np.arange(len(keys))
+    width = 0.36
+    b1 = ax.bar(x - width / 2, current, width, color=AUG, label=f"{cur_m}月当期", zorder=2)
+    b2 = ax.bar(x + width / 2, previous, width, color=JUL, label=f"{prev_m}月同期", zorder=2)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel(f"金额 ({metrics.currency})", fontsize=9, color=MUTED)
+    ax.set_title("表底合计对比（当期 vs 上月同期）", fontsize=12, color=TEXT, loc="left", pad=8, fontweight="bold")
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+
+    for bars in (b1, b2):
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                h,
+                f"${h:,.0f}",
+                ha="center",
+                va="bottom",
+                fontsize=7.4,
+                color=TEXT,
+            )
+    ymax = max(current + previous + [1]) * 1.28
+    ax.set_ylim(0, ymax)
+    for xi, rate in zip(x, rates):
+        ax.text(
+            xi,
+            ymax * 0.96,
+            f"{_rate_arrow(rate)}{_fmt_pct(rate)}",
+            ha="center",
+            va="top",
+            fontsize=9,
+            fontweight="bold",
+            color=_rate_color(rate),
+        )
+
+
 def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     ax.axis("off")
     ax.set_facecolor(BG)
@@ -478,7 +526,7 @@ def plot_dashboard(
     outer = GridSpec(
         9,
         1,
-        height_ratios=[0.52, 0.26, 1.02, 1.48, 0.26, 1.28, 0.26, 2.35, 2.05],
+        height_ratios=[0.52, 0.26, 1.02, 1.48, 0.26, 1.72, 0.26, 2.35, 2.05],
         hspace=0.10,
         top=0.96,
         bottom=0.03,
@@ -532,8 +580,13 @@ def plot_dashboard(
     _plot_total_compare(fig.add_subplot(gs_mid[0, 0]), metrics)
     _plot_daily_compare(fig.add_subplot(gs_mid[0, 1]), metrics)
 
-    _section_banner(fig.add_subplot(outer[4]), "02", "分项环比明细")
-    _plot_detail_table(fig.add_subplot(outer[5]), metrics)
+    mom_title = "分项环比明细（上月同期用表底合计，已剔除 sd 7.12-7.14 异常）"
+    if getattr(metrics, "mom_source", "daily") != "sheet_footer":
+        mom_title = "分项环比明细"
+    _section_banner(fig.add_subplot(outer[4]), "02", mom_title)
+    gs_mom = outer[5].subgridspec(1, 2, wspace=0.14, width_ratios=[1.12, 1.0])
+    _plot_mom_compare(fig.add_subplot(gs_mom[0, 0]), metrics)
+    _plot_detail_table(fig.add_subplot(gs_mom[0, 1]), metrics)
 
     _section_banner(fig.add_subplot(outer[6]), "03", "五项成本日度趋势（每天标注金额）")
     _plot_dual_axis_trend(fig.add_subplot(outer[7]), metrics)
