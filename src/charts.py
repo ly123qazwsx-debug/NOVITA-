@@ -155,12 +155,6 @@ def _value_label(ax, x, y, text: str, color: str, offset=(0, 7), fontsize: float
     )
 
 
-def pd_day(d) -> str:
-    if hasattr(d, "month") and hasattr(d, "day"):
-        return f"{int(d.month)}/{int(d.day)}"
-    return str(d)
-
-
 def _draw_kpi(ax, item: dict, symbol: str) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -508,50 +502,6 @@ def _plot_low_cost_trend(ax, metrics: ReportMetrics) -> None:
     )
 
 
-def _plot_daily_amount_table(ax, metrics: ReportMetrics) -> None:
-    """每天五项 + 当日合计，保证金额可读。"""
-    ax.axis("off")
-    ax.set_facecolor(BG)
-    df = metrics.trend_df.sort_values("date")
-    ax.set_title("每日消耗金额明细（单位 USD，与上图逐日对应）", fontsize=13, color=TEXT, loc="left", pad=8, fontweight="bold")
-    if df.empty:
-        ax.text(0.5, 0.5, "暂无日明细", ha="center", va="center", color=MUTED)
-        return
-
-    headers = ["日期", "LLM", "sd", "GPU按需", "GPU按需存储", "GPU固定", "当日合计"]
-    keys = ["llm", "sd", "gpu_ondemand", "gpu_storage", "gpu_fixed", "total_with_fixed"]
-    cell_text = []
-    cell_colors = []
-    for idx, row in enumerate(df.itertuples()):
-        values = [float(getattr(row, key)) if getattr(row, key) == getattr(row, key) else float("nan") for key in keys]
-        cell_text.append([pd_day(getattr(row, "date"))] + [_fmt_day_amt(v) if v == v else "–" for v in values])
-        stripe = "#1A2220" if idx % 2 else "#141A18"
-        cell_colors.append([stripe] * 6 + ["#1B3329"])
-
-    table = ax.table(
-        cellText=cell_text,
-        colLabels=headers,
-        loc="center",
-        cellLoc="center",
-        colColours=[HEADER_GREEN] * 7,
-        cellColours=cell_colors,
-    )
-    table.auto_set_font_size(False)
-    table.set_fontsize(7.6)
-    n = max(len(cell_text), 1)
-    table.scale(1, min(1.38, 20 / n))
-    for (row, col), cell in table.get_celld().items():
-        cell.set_edgecolor("#24332E")
-        cell.set_linewidth(0.45)
-        if row == 0:
-            cell.set_text_props(fontweight="bold", color=TEXT)
-            cell.set_facecolor(HEADER_GREEN)
-        else:
-            cell.set_text_props(color=TEXT)
-            if col == 0 or col == 6:
-                cell.set_text_props(fontweight="bold", color=ACCENT if col == 6 else TEXT)
-
-
 def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     ax.axis("off")
     ax.set_facecolor(BG)
@@ -625,11 +575,11 @@ def plot_dashboard(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     p = metrics.current_period
-    fig = plt.figure(figsize=(19.6, 27.4), facecolor=BG)
+    fig = plt.figure(figsize=(19.6, 22.8), facecolor=BG)
     outer = GridSpec(
-        7,
+        6,
         1,
-        height_ratios=[0.50, 1.08, 1.58, 1.42, 2.72, 1.92, 2.05],
+        height_ratios=[0.50, 1.08, 1.58, 1.42, 2.72, 1.92],
         hspace=0.18,
         top=0.975,
         bottom=0.025,
@@ -687,7 +637,6 @@ def plot_dashboard(
     _plot_detail_table(fig.add_subplot(outer[3]), metrics)
     _plot_main_trend(fig.add_subplot(outer[4]), metrics)
     _plot_low_cost_trend(fig.add_subplot(outer[5]), metrics)
-    _plot_daily_amount_table(fig.add_subplot(outer[6]), metrics)
 
     path = output_dir / "novita_dashboard.png"
     fig.savefig(path, dpi=155, facecolor=fig.get_facecolor())
