@@ -1,0 +1,31 @@
+# 飞书应用凭证 — 在 https://open.feishu.cn/app 创建企业自建应用后获取
+# 也可通过环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET 注入，不必写进本文件
+feishu:
+  app_id: "cli_xxxxxxxxxx"
+  app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 数据源：飞书 Wiki 内嵌电子表格 NOVITA
+# https://dreamonvip.feishu.cn/wiki/AbzbwxIJiiyxIAkMFkKcRHJZnKG?sheet=v9euzu
+data_source:
+  wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
+  sheet_name: "NOVITA"
+  sheet_id: "v9euzu"
+  range: "A1:L200"
+
+# 列按 NOVITA 表固定顺序解析：
+# A年 B月 C日(8月1日) D LLM  E sd  F GPU (按需)  G GPU (按需存储)  H GPU 固定
+
+report:
+  currency: "USD"
+  currency_symbol: "$"
+  timezone: "Asia/Shanghai"
+  output_dir: "output"
+
+# 飞书推送：配置 webhook 或 receive_id 后自动发送
+push:
+  enabled: true
+  webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
+  webhook_secret: ""
+  # 可选：通过应用发到指定会话（需 im:message 权限）
+  receive_id: ""
+  receive_id_type: "chat_id"   # chat_id | open_id | email

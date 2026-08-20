@@ -1,0 +1,19 @@
+# 飞书凭证（勿提交真实值）
+config.yaml
+.env
+
+# 报告输出
+output/
+
+# 报告输出
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
