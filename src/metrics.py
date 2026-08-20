@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from calendar import monthrange
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -44,6 +44,7 @@ class ReportMetrics:
     today: dict[str, float]
     forecast_month_total: float
     prev_forecast_month_total: float
+    prev_month_full_total: float
     mom_changes: dict[str, dict[str, float]]
     overview: list[dict[str, Any]] = field(default_factory=list)
     trend_df: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -54,14 +55,14 @@ def _month_start(d: date) -> date:
     return d.replace(day=1)
 
 
-def _same_period_last_month(report_date: date) -> tuple[date, date]:
-    if report_date.month == 1:
-        prev_month, prev_year = 12, report_date.year - 1
+def _same_period_last_month(end_date: date) -> tuple[date, date]:
+    if end_date.month == 1:
+        prev_month, prev_year = 12, end_date.year - 1
     else:
-        prev_month, prev_year = report_date.month - 1, report_date.year
+        prev_month, prev_year = end_date.month - 1, end_date.year
 
     prev_start = date(prev_year, prev_month, 1)
-    prev_end = date(prev_year, prev_month, min(report_date.day, monthrange(prev_year, prev_month)[1]))
+    prev_end = date(prev_year, prev_month, min(end_date.day, monthrange(prev_year, prev_month)[1]))
     return prev_start, prev_end
 
 
@@ -83,12 +84,19 @@ def _item(current: float, previous: float) -> dict[str, float]:
     return {"current": current, "previous": previous, "change": change, "rate": rate}
 
 
+def _period_end_through_yesterday(df: pd.DataFrame, tz: ZoneInfo) -> date:
+    """今天 8 月 20 日则统计到 8 月 19 日（不含当天）。"""
+    today = datetime.now(tz).date()
+    as_of = today - timedelta(days=1)
+    eligible = df.loc[df["date"] <= as_of, "date"]
+    if eligible.empty:
+        raise ValueError(f"没有截至 {as_of} 的数据，无法生成当月日报")
+    return eligible.max()
+
+
 def calculate_metrics(df: pd.DataFrame, config: dict[str, Any]) -> ReportMetrics:
     tz = ZoneInfo(config["report"]["timezone"])
-    report_date = datetime.now(tz).date()
-
-    if report_date not in set(df["date"]):
-        report_date = df["date"].max()
+    report_date = _period_end_through_yesterday(df, tz)
 
     cur_start = _month_start(report_date)
     cur_end = report_date
@@ -124,6 +132,8 @@ def calculate_metrics(df: pd.DataFrame, config: dict[str, Any]) -> ReportMetrics
 
     days_in_month = monthrange(report_date.year, report_date.month)[1]
     days_in_prev = monthrange(prev_start.year, prev_start.month)[1]
+    prev_full_end = date(prev_start.year, prev_start.month, days_in_prev)
+    prev_month_full_total = _sum_period(df, prev_start, prev_full_end)["total_with_fixed"]
     forecast = cur_totals["total_with_fixed"] / cur_days * days_in_month if cur_days else 0.0
     prev_forecast = prev_totals["total_with_fixed"] / prev_days * days_in_prev if prev_days else 0.0
 
@@ -143,13 +153,13 @@ def calculate_metrics(df: pd.DataFrame, config: dict[str, Any]) -> ReportMetrics
         },
         {
             "key": "daily_ondemand",
-            "label": "日消耗-按需计费(LLM/SD/GPU按需/存储)",
+            "label": "日消耗-按需计费",
             **_item(current_period.daily_avg["total_ondemand"], previous_period.daily_avg["total_ondemand"]),
         },
         {
             "key": "forecast",
             "label": f"预计{report_date.month}月总消耗",
-            **_item(forecast, prev_forecast),
+            **_item(forecast, prev_month_full_total),
         },
     ]
 
@@ -165,6 +175,7 @@ def calculate_metrics(df: pd.DataFrame, config: dict[str, Any]) -> ReportMetrics
         today=today,
         forecast_month_total=forecast,
         prev_forecast_month_total=prev_forecast,
+        prev_month_full_total=prev_month_full_total,
         mom_changes=mom_changes,
         overview=overview,
         trend_df=trend_df,

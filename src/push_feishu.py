@@ -48,7 +48,7 @@ def build_card(metrics: ReportMetrics, image_keys: dict[str, str] | None = None)
         overview_lines.append(
             f"**{row['label']}**\n"
             f"当月 {_fmt_money(row['current'], sym)} ｜ "
-            f"上月同期 {_fmt_money(row['previous'], sym)} ｜ "
+            f"{'上月全月' if row['key'] == 'forecast' else '上月同期'} {_fmt_money(row['previous'], sym)} ｜ "
             f"环比 {_fmt_money(row['change'], sym)} ｜ "
             f"{_fmt_rate(row['rate'])}"
         )
@@ -68,8 +68,8 @@ def build_card(metrics: ReportMetrics, image_keys: dict[str, str] | None = None)
             "text": {
                 "tag": "lark_md",
                 "content": (
-                    f"统计区间：**{p.start.month}.{p.start.day} – {p.end.month}.{p.end.day}**"
-                    f"（已过 {p.days} 天）｜ 单位：{metrics.currency}\n\n"
+                    f"统计区间：**{p.start.month}月{p.start.day}日 – {p.end.month}月{p.end.day}日**"
+                    f"（截至昨日，共 {p.days} 天）｜ 单位：{metrics.currency}\n\n"
                     + "\n\n".join(overview_lines)
                 ),
             },
