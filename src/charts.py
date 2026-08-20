@@ -226,6 +226,12 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
     ax.set_ylim(0, max(current + previous + [1]) * 1.22)
 
 
+def _fmt_day_amt(value: float) -> str:
+    if value != value:
+        return ""
+    return f"{value:,.0f}"
+
+
 def _plot_dual_axis_trend(ax, metrics: ReportMetrics) -> None:
     df = metrics.trend_df.sort_values("date").copy()
     _style_ax(ax)
@@ -242,7 +248,7 @@ def _plot_dual_axis_trend(ax, metrics: ReportMetrics) -> None:
         df.loc[mask, "gpu_fixed"],
         width=0.68,
         color=BAR_FIXED,
-        alpha=0.82,
+        alpha=0.78,
         label="GPU 固定（左轴）",
         zorder=2,
     )
@@ -257,37 +263,80 @@ def _plot_dual_axis_trend(ax, metrics: ReportMetrics) -> None:
     ax2.grid(False)
 
     line_specs = [
-        ("llm", "LLM", "o"),
-        ("sd", "sd", "s"),
-        ("gpu_ondemand", "GPU 按需", "^"),
-        ("gpu_storage", "GPU 按需存储", "D"),
+        ("llm", "LLM", "o", (0, 9)),
+        ("sd", "sd", "s", (0, -11)),
+        ("gpu_ondemand", "GPU 按需", "^", (5, 4)),
+        ("gpu_storage", "GPU 按需存储", "D", (-5, -8)),
     ]
-    for key, label, marker in line_specs:
+    for key, label, marker, offset in line_specs:
         ax2.plot(
             x,
             df[key],
             color=LINE_COLORS[key],
             linewidth=2.2,
             marker=marker,
-            markersize=5.0,
+            markersize=5.4,
             label=label,
             zorder=3,
         )
+        for xi, value in zip(x, df[key]):
+            if value != value:
+                continue
+            ax2.annotate(
+                _fmt_day_amt(float(value)),
+                (xi, value),
+                textcoords="offset points",
+                xytext=offset,
+                ha="center",
+                va="center",
+                fontsize=7.0,
+                color=LINE_COLORS[key],
+                zorder=4,
+            )
     ax2.set_ylabel("按需分项 (USD)", fontsize=9.5, color=MUTED)
     ax2.tick_params(axis="y", labelsize=9, colors=MUTED)
 
     ax.set_xticks(x)
-    step = 2 if len(x) > 12 else 1
-    ax.set_xticklabels([lab if i % step == 0 else "" for i, lab in enumerate(labels)], fontsize=8.4)
+    ax.set_xticklabels(labels, fontsize=7.6)
     ax.set_xlim(-0.6, len(x) - 0.4)
     vals = df["gpu_fixed"].dropna()
-    ax.set_ylim(0, max(float(vals.max()) * 1.18 if not vals.empty else 0.0, 1))
+    ax.set_ylim(0, max(float(vals.max()) * 1.28 if not vals.empty else 0.0, 1))
     ondemand_max = 0.0
-    for k, _, _ in line_specs:
+    for k, _, _, _ in line_specs:
         series = df[k].dropna()
         if not series.empty:
             ondemand_max = max(ondemand_max, float(series.max()))
-    ax2.set_ylim(0, max(ondemand_max * 1.28, 1))
+    ax2.set_ylim(0, max(ondemand_max * 1.42, 1))
+
+    for xi, value in zip(x[mask.to_numpy()], df.loc[mask, "gpu_fixed"]):
+        ax.text(
+            xi,
+            float(value),
+            _fmt_day_amt(float(value)),
+            ha="center",
+            va="bottom",
+            fontsize=7.0,
+            color=BAR_FIXED,
+            rotation=90,
+            zorder=4,
+        )
+
+    if "total_with_fixed" in df.columns:
+        y_top = ax.get_ylim()[1]
+        for xi, value in zip(x, df["total_with_fixed"]):
+            if value != value:
+                continue
+            ax.text(
+                xi,
+                y_top * 0.99,
+                _fmt_day_amt(float(value)),
+                ha="center",
+                va="top",
+                fontsize=7.2,
+                color=TEXT,
+                fontweight="bold",
+                zorder=5,
+            )
 
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
@@ -295,12 +344,65 @@ def _plot_dual_axis_trend(ax, metrics: ReportMetrics) -> None:
         h1 + h2,
         l1 + l2,
         frameon=False,
-        fontsize=8.6,
+        fontsize=8.4,
         ncol=5,
         loc="lower left",
         bbox_to_anchor=(0.0, 1.02),
         borderaxespad=0,
     )
+    ax.text(
+        1.0,
+        1.02,
+        "柱顶为 GPU 固定，折线旁为分项，最上为当日合计",
+        fontsize=7.5,
+        color=MUTED,
+        ha="right",
+        va="bottom",
+        transform=ax.transAxes,
+    )
+
+
+def _plot_daily_amount_table(ax, metrics: ReportMetrics) -> None:
+    """把每天五项 + 当日合计写成表，保证金额可读。"""
+    ax.axis("off")
+    ax.set_facecolor(BG)
+    df = metrics.trend_df.sort_values("date")
+    if df.empty:
+        ax.text(0.5, 0.5, "暂无日明细", ha="center", va="center")
+        return
+
+    headers = ["日期", "LLM", "sd", "GPU按需", "存储", "GPU固定", "当日合计"]
+    keys = ["llm", "sd", "gpu_ondemand", "gpu_storage", "gpu_fixed", "total_with_fixed"]
+    cell_text = []
+    cell_colors = []
+    for row in df.itertuples():
+        day = getattr(row, "date")
+        values = [float(getattr(row, key)) if getattr(row, key) == getattr(row, key) else float("nan") for key in keys]
+        cell_text.append(
+            [pd_day(day)] + [_fmt_day_amt(v) if v == v else "–" for v in values]
+        )
+        cell_colors.append(["#FFFFFF"] * 6 + ["#E7F3EE"])
+
+    table = ax.table(
+        cellText=cell_text,
+        colLabels=headers,
+        loc="center",
+        cellLoc="center",
+        colColours=["#D8EDE6"] * 7,
+        cellColours=cell_colors,
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(7.4)
+    n = max(len(cell_text), 1)
+    table.scale(1, min(1.35, 18 / n))
+    for (row, col), cell in table.get_celld().items():
+        cell.set_edgecolor("#D5E4DF")
+        cell.set_linewidth(0.5)
+        if row == 0:
+            cell.set_text_props(fontweight="bold", color=TEXT)
+        elif col == 0 or col == 6:
+            cell.set_text_props(fontweight="bold")
+    ax.set_title("每日金额明细（单位 USD）", fontsize=11, color=TEXT, loc="left", pad=6, fontweight="bold")
 
 
 def pd_day(d) -> str:
@@ -372,15 +474,15 @@ def plot_dashboard(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     p = metrics.current_period
-    fig = plt.figure(figsize=(18.6, 16.4), facecolor=BG)
+    fig = plt.figure(figsize=(18.8, 19.4), facecolor=BG)
     outer = GridSpec(
-        8,
+        9,
         1,
-        height_ratios=[0.62, 0.32, 1.18, 1.72, 0.32, 1.55, 0.32, 2.55],
-        hspace=0.08,
-        top=0.955,
-        bottom=0.035,
-        left=0.05,
+        height_ratios=[0.52, 0.26, 1.02, 1.48, 0.26, 1.28, 0.26, 2.35, 2.05],
+        hspace=0.10,
+        top=0.96,
+        bottom=0.03,
+        left=0.045,
         right=0.96,
     )
 
@@ -433,8 +535,9 @@ def plot_dashboard(
     _section_banner(fig.add_subplot(outer[4]), "02", "分项环比明细")
     _plot_detail_table(fig.add_subplot(outer[5]), metrics)
 
-    _section_banner(fig.add_subplot(outer[6]), "03", "五项成本日度趋势（柱=GPU固定，线=按需项）")
+    _section_banner(fig.add_subplot(outer[6]), "03", "五项成本日度趋势（每天标注金额）")
     _plot_dual_axis_trend(fig.add_subplot(outer[7]), metrics)
+    _plot_daily_amount_table(fig.add_subplot(outer[8]), metrics)
 
     path = output_dir / "novita_dashboard.png"
     fig.savefig(path, dpi=150, facecolor=fig.get_facecolor())
