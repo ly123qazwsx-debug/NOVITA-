@@ -1,0 +1,37 @@
+# 飞书应用凭证 — 在 https://open.feishu.cn/app 创建企业自建应用后获取
+feishu:
+  app_id: "cli_xxxxxxxxxx"
+  app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 数据源：飞书 Wiki 内嵌电子表格
+# 链接示例: https://dreamonvip.feishu.cn/wiki/AbzbwxIJiiyxIAkMFkKcRHJZnKG?sheet=v9euzu
+data_source:
+  wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
+  sheet_name: "NOVITA"         # 工作表名称
+  sheet_id: "v9euzu"           # 备用：URL 中 sheet= 参数（与 sheet_name 二选一）
+  # 数据区域，根据实际表格调整（含表头行）
+  range: "A1:H500"
+
+# 列映射 — 按你表格的实际列名修改
+columns:
+  date: "日期"
+  llm: "LLM"
+  sd: "SD"
+  gpu_ondemand: "GPU（按需）"
+  gpu_storage: "GPU（按需存储）"
+  gpu_fixed: "GPU（固定）"
+
+# 报告设置
+report:
+  currency: "USD"
+  currency_symbol: "$"
+  timezone: "Asia/Shanghai"
+  output_dir: "output"
+
+# 飞书推送（可选，不填则只生成本地报告）
+push:
+  enabled: false
+  # 群机器人 Webhook 地址
+  webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
+  # 或使用应用消息推送到群（需 chat_id）
+  # chat_id: "oc_xxxxxxxx"
