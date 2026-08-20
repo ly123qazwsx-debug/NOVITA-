@@ -288,7 +288,7 @@ def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
                 continue
             if "预计" in label and ("消耗" in label or "全月" in label or label.endswith("预计")):
                 overrides.setdefault("forecast", amount)
-            elif "实际" in label and ("消耗" in label or "全月" in label):
+            elif "实际" in label:
                 overrides.setdefault("actual", amount)
     return overrides
 

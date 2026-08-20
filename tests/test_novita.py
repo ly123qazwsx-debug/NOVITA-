@@ -123,7 +123,9 @@ def test_parse_sheet_forecast_override():
     rows = [
         ["预计8月总消耗", 59552.27, "实际", 60910.12],
     ]
-    assert parse_sheet_overrides(rows)["forecast"] == 59552.27
+    parsed = parse_sheet_overrides(rows)
+    assert parsed["forecast"] == 59552.27
+    assert parsed["actual"] == 60910.12
     df = parse_novita_rows(SAMPLE_ROWS)
     df.attrs["sheet_overrides"] = {"forecast": 59552.27}
     metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
@@ -148,6 +150,8 @@ def test_dashboard_generates_one_image():
 
         im = Image.open(charts["dashboard"])
         assert im.mode == "RGB"
+        pixel = im.getpixel((12, 12))
+        assert pixel[0] < 50 and pixel[1] < 50 and pixel[2] < 50
 
 
 def test_image_upload_error_explains_missing_bot():
