@@ -11,7 +11,6 @@ from matplotlib.patches import FancyBboxPatch
 from matplotlib.ticker import FuncFormatter
 
 from .metrics import CATEGORY_LABELS, ReportMetrics
-from .report import _fmt_money
 
 BG = "#101412"
 CARD = "#171C1A"
@@ -37,6 +36,7 @@ LINE_COLORS = {
 }
 
 KPI_LABELS = {
+    "daily_with_fixed": "日消耗-含固定GPU",
     "daily_ondemand": "日消耗-按需计费",
 }
 
@@ -93,19 +93,23 @@ def _fmt_pct_signed(rate: float) -> str:
     return f"{number}%"
 
 
-def _fmt_signed_money(value: float, symbol: str) -> str:
+def _fmt_amt(value: float, decimals: int = 2) -> str:
+    if value != value:
+        return ""
+    return f"{value:,.{decimals}f}"
+
+
+def _fmt_signed_amt(value: float) -> str:
     sign = "+" if value >= 0 else "-"
-    return f"{sign}{symbol}{abs(value):,.2f}"
+    return f"{sign}{abs(value):,.2f}"
 
 
 def _fmt_day_amt(value: float) -> str:
-    if value != value:
-        return ""
-    return f"${value:,.2f}"
+    return _fmt_amt(value)
 
 
 def _money_axis(ax) -> None:
-    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"${v:,.0f}"))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
 
 
 def _titled(title: str) -> str:
@@ -121,12 +125,12 @@ def _style_ax(ax, *, both_grids: bool = False) -> None:
     ax.spines["right"].set_visible(False)
     ax.spines["left"].set_color(CARD_LINE)
     ax.spines["bottom"].set_color(CARD_LINE)
-    ax.tick_params(labelsize=12, colors=MUTED, width=1.1, length=5)
+    ax.tick_params(labelsize=14, colors=MUTED, width=1.1, length=5)
     ax.title.set_color(TEXT)
 
 
 def _legend(ax, **kwargs) -> None:
-    kwargs.setdefault("fontsize", 13)
+    kwargs.setdefault("fontsize", 16)
     kwargs.setdefault("handlelength", 1.6)
     kwargs.setdefault("borderpad", 0.6)
     leg = ax.legend(frameon=True, **kwargs)
@@ -195,12 +199,13 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
         )
     )
     label = KPI_LABELS.get(item["key"], item["label"])
-    ax.text(0.08, 0.80, f"{label}  ·  {UNIT_TAG}", fontsize=12.5, color=MUTED, va="center", transform=ax.transAxes)
+    ax.text(0.07, 0.80, label, fontsize=18, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
+    ax.text(0.07, 0.64, UNIT_TAG, fontsize=13, color=MUTED, va="center", transform=ax.transAxes)
     ax.text(
-        0.08,
-        0.48,
-        _fmt_money(item["current"], symbol),
-        fontsize=26,
+        0.07,
+        0.40,
+        _fmt_amt(item["current"]),
+        fontsize=30,
         fontweight="bold",
         color=TEXT,
         va="center",
@@ -209,10 +214,10 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
     rate = item["rate"]
     change = item["change"]
     ax.text(
-        0.08,
-        0.18,
-        f"{_rate_arrow(rate)} {_fmt_pct_signed(rate)}    {_fmt_signed_money(change, symbol)}",
-        fontsize=13,
+        0.07,
+        0.16,
+        f"{_rate_arrow(rate)} {_fmt_pct_signed(rate)}    {_fmt_signed_amt(change)}",
+        fontsize=14.5,
         color=_rate_color(rate),
         va="center",
         transform=ax.transAxes,
@@ -236,9 +241,9 @@ def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
     bars_aug = ax.bar(xs - width / 2, [cur, forecast], width, color=AUG, label=f"{cur_m}月", zorder=3)
     bars_jul = ax.bar(xs + width / 2, [prev, prev_full], width, color=JUL, label=f"{prev_m}月", zorder=3)
     ax.set_xticks(xs)
-    ax.set_xticklabels([f"当月总消耗", f"预计{cur_m}月总消耗"], fontsize=13)
-    ax.set_ylabel(f"金额（{UNIT}）", fontsize=13, color=MUTED)
-    ax.set_title(_titled("累计与预计总消耗对比"), fontsize=17, color=TEXT, loc="left", pad=12, fontweight="bold")
+    ax.set_xticklabels([f"当月总消耗", f"预计{cur_m}月总消耗"], fontsize=16)
+    ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
+    ax.set_title(_titled("累计与预计总消耗对比"), fontsize=22, color=TEXT, loc="left", pad=14, fontweight="bold")
     _legend(ax, loc="upper left")
 
     for bars in (bars_aug, bars_jul):
@@ -250,7 +255,7 @@ def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
                 _fmt_day_amt(h),
                 ha="center",
                 va="bottom",
-                fontsize=11,
+                fontsize=13,
                 color=TEXT,
                 zorder=4,
             )
@@ -265,10 +270,10 @@ def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
         ax.text(
             x,
             peak + ymax * 0.04,
-            f"环比 {_fmt_signed_money(item['change'], metrics.currency_symbol)} ({_fmt_pct_signed(item['rate'])})",
+            f"环比 {_fmt_signed_amt(item['change'])} ({_fmt_pct_signed(item['rate'])})",
             ha="center",
             va="bottom",
-            fontsize=12,
+            fontsize=14,
             color=_rate_color(item["rate"]),
             fontweight="bold",
         )
@@ -295,9 +300,9 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
     b1 = ax.bar(x - width / 2, current, width, color=AUG, label=f"{cur_m}月", zorder=3)
     b2 = ax.bar(x + width / 2, previous, width, color=JUL, label=f"{prev_m}月", zorder=3)
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=13)
-    ax.set_ylabel(f"金额（{UNIT}）", fontsize=13, color=MUTED)
-    ax.set_title(_titled("日消耗对比"), fontsize=17, color=TEXT, loc="left", pad=12, fontweight="bold")
+    ax.set_xticklabels(labels, fontsize=16)
+    ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
+    ax.set_title(_titled("日消耗对比"), fontsize=22, color=TEXT, loc="left", pad=14, fontweight="bold")
     _legend(ax, loc="upper right")
     for bars in (b1, b2):
         for bar in bars:
@@ -308,7 +313,7 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
                 _fmt_day_amt(h),
                 ha="center",
                 va="bottom",
-                fontsize=11,
+                fontsize=13,
                 color=TEXT,
                 zorder=4,
             )
@@ -324,7 +329,7 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
             _fmt_pct_signed(item["rate"]),
             ha="center",
             va="bottom",
-            fontsize=14,
+            fontsize=16,
             color=_rate_color(item["rate"]),
             fontweight="bold",
         )
@@ -352,8 +357,8 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
         label="GPU固定（左轴）",
         zorder=2,
     )
-    ax.set_ylabel(f"GPU固定（{UNIT}）", fontsize=13.5, color=BAR_FIXED)
-    ax.tick_params(axis="y", colors=BAR_FIXED, labelsize=12)
+    ax.set_ylabel(f"GPU固定（{UNIT}）", fontsize=16, color=BAR_FIXED)
+    ax.tick_params(axis="y", colors=BAR_FIXED, labelsize=14)
     _money_axis(ax)
 
     ax2 = ax.twinx()
@@ -362,8 +367,8 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
     ax2.spines["left"].set_visible(False)
     ax2.spines["right"].set_color("#5CE1E6")
     ax2.grid(False)
-    ax2.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"${v:,.0f}"))
-    ax2.tick_params(axis="y", labelsize=12, colors="#5CE1E6")
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    ax2.tick_params(axis="y", labelsize=14, colors="#5CE1E6")
 
     line_specs = [
         ("llm", "LLM", "o", (0, 14), LINE_COLORS["llm"]),
@@ -384,12 +389,12 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
             if value != value:
                 continue
             day_offset = (0, offset[1] + (5 if i % 2 == 0 else -5))
-            _value_label(ax2, xi, float(value), _fmt_day_amt(float(value)), color, offset=day_offset, fontsize=8.8)
+            _value_label(ax2, xi, float(value), _fmt_day_amt(float(value)), color, offset=day_offset, fontsize=11)
 
-    ax2.set_ylabel(f"LLM / sd（{UNIT}）", fontsize=13.5, color=MUTED)
+    ax2.set_ylabel(f"LLM / sd（{UNIT}）", fontsize=16, color=MUTED)
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=11)
+    ax.set_xticklabels(labels, fontsize=13)
     ax.set_xlim(-0.65, len(x) - 0.35)
     vals = df["gpu_fixed"].dropna()
     ax.set_ylim(0, max(float(vals.max()) * 1.28 if not vals.empty else 0.0, 1))
@@ -408,14 +413,14 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
             _fmt_day_amt(float(value)),
             BAR_FIXED,
             offset=(0, 13),
-            fontsize=8.8,
+            fontsize=11,
         )
 
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
     ax.set_title(
         _titled(f"NOVITA {month}月日度趋势详情 ｜ 主要成本"),
-        fontsize=17,
+        fontsize=22,
         color=TEXT,
         loc="left",
         pad=34,
@@ -434,7 +439,7 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
         1.0,
         1.08,
         f"GPU固定用左轴；LLM、sd 用右轴 ｜ 每日金额已标注（{UNIT}）",
-        fontsize=11.5,
+        fontsize=14,
         color=MUTED,
         ha="right",
         va="bottom",
@@ -488,22 +493,22 @@ def _plot_low_cost_trend(ax, metrics: ReportMetrics) -> None:
                 _fmt_day_amt(amount),
                 color,
                 offset=day_offset,
-                fontsize=8.8,
+                fontsize=11,
             )
 
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=11)
+    ax.set_xticklabels(labels, fontsize=13)
     ax.set_xlim(-0.65, len(x) - 0.35)
     ax.set_ylim(0, max(ymax * 1.45, 10))
-    ax.set_ylabel(f"金额（{UNIT}）", fontsize=13.5, color=MUTED)
-    ax.set_title(_titled("低金额成本 ｜ 独立放大显示"), fontsize=17, color=TEXT, loc="left", pad=32, fontweight="bold")
+    ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
+    ax.set_title(_titled("低金额成本 ｜ 独立放大显示"), fontsize=22, color=TEXT, loc="left", pad=32, fontweight="bold")
     _legend(ax, loc="lower left", bbox_to_anchor=(0.0, 1.01), ncol=2, borderaxespad=0)
     p = metrics.current_period
     ax.text(
         1.0,
         1.08,
         f"数据区间 {p.start.month}月{p.start.day}日–{p.end.month}月{p.end.day}日 ｜ {UNIT_TAG}",
-        fontsize=11.5,
+        fontsize=14,
         color=MUTED,
         ha="right",
         va="bottom",
@@ -514,11 +519,10 @@ def _plot_low_cost_trend(ax, metrics: ReportMetrics) -> None:
 def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     ax.axis("off")
     ax.set_facecolor(BG)
-    sym = metrics.currency_symbol
     month_total = metrics.current_period.totals["total_with_fixed"]
     cur_m = metrics.current_period.end.month
     note = "（上月同期用表底合计，已剔除 sd 7.12-7.14 异常）" if getattr(metrics, "mom_source", "daily") == "sheet_footer" else ""
-    ax.set_title(_titled(f"分项环比明细{note}"), fontsize=17, color=TEXT, loc="left", pad=10, fontweight="bold")
+    ax.set_title(_titled(f"分项环比明细{note}"), fontsize=22, color=TEXT, loc="left", pad=12, fontweight="bold")
 
     rows = [{"key": k, "label": CATEGORY_LABELS[k], **metrics.mom_changes[k]} for k in MOM_ROW_ORDER]
     rows.append({"key": "total", "label": "总消耗", **metrics.mom_changes["total_with_fixed"]})
@@ -533,9 +537,9 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
         cell_text.append(
             [
                 item["label"],
-                _fmt_money(item["current"], sym),
-                _fmt_money(item["previous"], sym),
-                _fmt_signed_money(item["change"], sym),
+                _fmt_amt(item["current"]),
+                _fmt_amt(item["previous"]),
+                _fmt_signed_amt(item["change"]),
                 _fmt_pct_signed(rate) if rate == rate else "N/A",
                 f"{share:.1f}%",
             ]
@@ -551,8 +555,8 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
         cellColours=cell_colors,
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(13)
-    table.scale(1, 2.05)
+    table.set_fontsize(16)
+    table.scale(1, 2.15)
     for (row, col), cell in table.get_celld().items():
         cell.set_edgecolor("#24332E")
         cell.set_linewidth(0.55)
@@ -588,7 +592,7 @@ def plot_dashboard(
     outer = GridSpec(
         6,
         1,
-        height_ratios=[0.58, 1.28, 1.92, 1.72, 3.35, 2.35],
+        height_ratios=[0.68, 1.42, 1.92, 1.78, 3.35, 2.35],
         hspace=0.20,
         top=0.972,
         bottom=0.028,
@@ -603,7 +607,7 @@ def plot_dashboard(
         0.0,
         0.62,
         f"NOVITA {p.end.month}月成本概览",
-        fontsize=32,
+        fontsize=42,
         fontweight="bold",
         color=TEXT,
         va="center",
@@ -612,15 +616,15 @@ def plot_dashboard(
     title_ax.text(
         0.0,
         0.12,
-        f"截至 {p.end.month} 月 {p.end.day} 日  ｜  {UNIT_TAG}（USD）",
-        fontsize=16,
+        f"截至 {p.end.month} 月 {p.end.day} 日  ｜  {UNIT_TAG}",
+        fontsize=20,
         color=MUTED,
         va="center",
         transform=title_ax.transAxes,
     )
     right_bits = []
     if metrics.sheet_actual:
-        right_bits.append(f"实际 {_fmt_money(metrics.sheet_actual, metrics.currency_symbol)}")
+        right_bits.append(f"实际 {_fmt_amt(metrics.sheet_actual)}")
     if getattr(metrics, "mom_source", "daily") == "sheet_footer":
         right_bits.append("已剔除异常消耗")
     if right_bits:
@@ -628,7 +632,7 @@ def plot_dashboard(
             1.0,
             0.62,
             "  ｜  ".join(right_bits),
-            fontsize=15,
+            fontsize=18,
             color=ACCENT,
             ha="right",
             va="center",
