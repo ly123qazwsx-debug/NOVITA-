@@ -38,6 +38,7 @@ POSITIONAL_INDEX = {
 
 SKIP_KEYWORDS = ("合计", "环比", "当期", "上月同期", "单位")
 DATE_RE = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+MONTH_RE = re.compile(r"(\d{1,2})\s*月")
 
 
 def resolve_spreadsheet_token(client: FeishuClient, wiki_token: str) -> str:
@@ -163,6 +164,8 @@ def parse_novita_rows(raw_rows: list[list[Any]]) -> pd.DataFrame:
     df = pd.DataFrame(records).drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
     df["total_with_fixed"] = df[COST_COLUMNS].sum(axis=1)
     df["total_ondemand"] = df[["llm", "sd", "gpu_ondemand", "gpu_storage"]].sum(axis=1)
+    df.attrs["sheet_mom"] = parse_sheet_mom_summary(raw_rows)
+    df.attrs["sheet_overrides"] = parse_sheet_overrides(raw_rows)
     return df
 
 
@@ -179,8 +182,95 @@ def fetch_cost_data(client: FeishuClient, config: dict[str, Any]) -> pd.DataFram
 
     raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:R400")
     df = parse_novita_rows(raw_rows)
-    df.attrs["sheet_overrides"] = parse_sheet_overrides(raw_rows)
     return df
+
+
+def _parse_pct(value: Any) -> float:
+    """表底环比率：支持 29%、-14%、以及飞书返回的 0.29 / -0.14。"""
+    raw = _norm(value)
+    has_pct = "%" in raw or "％" in raw
+    text = raw.replace("%", "").replace("％", "").replace("+", "").replace(",", "")
+    if text == "":
+        return float("nan")
+    try:
+        number = float(text)
+    except ValueError:
+        return float("nan")
+    if not has_pct and 0 < abs(number) <= 1:
+        return number * 100
+    return number
+
+
+def _summary_kind(label: str) -> str | None:
+    text = label.replace(" ", "").replace("　", "")
+    if "环比率" in text:
+        return "rate"
+    if "上月同期" in text:
+        return "previous"
+    if "当期合计" in text or ("当期" in text and "合计" in text):
+        return "current"
+    if "环比" in text and "率" not in text:
+        return "change"
+    return None
+
+
+def _amounts_from_row(
+    row: list[Any],
+    col_index: dict[str, int],
+    as_rate: bool = False,
+    total_idx: int = 8,
+) -> dict[str, float]:
+    parse = _parse_pct if as_rate else _parse_amount
+    amounts = {}
+    for key in COST_COLUMNS:
+        i = col_index[key]
+        amounts[key] = parse(row[i] if i < len(row) else "")
+    total = parse(row[total_idx] if len(row) > total_idx else "")
+    if as_rate:
+        amounts["total_with_fixed"] = total
+        amounts["total_ondemand"] = float("nan")
+        return amounts
+    if total != total or abs(total) < 1e-9:
+        total = sum(amounts[k] for k in COST_COLUMNS)
+    amounts["total_with_fixed"] = total
+    amounts["total_ondemand"] = (
+        amounts["llm"] + amounts["sd"] + amounts["gpu_ondemand"] + amounts["gpu_storage"]
+    )
+    return amounts
+
+
+def parse_sheet_mom_summary(raw_rows: list[list[Any]]) -> dict[int, dict[str, dict[str, float]]]:
+    """读取各月表底「当期合计 / 上月同期 / 环比 / 环比率」，供分项环比用。"""
+    if not raw_rows:
+        return {}
+    _, header = _find_header_row(raw_rows)
+    col_index = {field: _resolve_col_index(header, field) for field in POSITIONAL_INDEX}
+    total_idx = 8
+    for i, name in enumerate(header):
+        if "总消耗" in name:
+            total_idx = i
+            break
+    result: dict[int, dict[str, dict[str, float]]] = {}
+    last_month: int | None = None
+
+    for row in raw_rows:
+        if not row or all(_norm(c) == "" for c in row):
+            continue
+        month = _parse_int(row[1] if len(row) > 1 else "") or last_month
+        label = _norm(row[col_index["date"]] if col_index["date"] < len(row) else "")
+        label_month = MONTH_RE.search(label)
+        if label_month:
+            month = int(label_month.group(1))
+        if month:
+            last_month = month
+        kind = _summary_kind(label)
+        if kind is None or month is None:
+            continue
+        block = result.setdefault(month, {})
+        block[kind] = _amounts_from_row(
+            row, col_index, as_rate=(kind == "rate"), total_idx=total_idx
+        )
+    return result
 
 
 def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
@@ -198,7 +288,7 @@ def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
                 continue
             if "预计" in label and ("消耗" in label or "全月" in label or label.endswith("预计")):
                 overrides.setdefault("forecast", amount)
-            elif "实际" in label and ("消耗" in label or "全月" in label):
+            elif "实际" in label:
                 overrides.setdefault("actual", amount)
     return overrides
 

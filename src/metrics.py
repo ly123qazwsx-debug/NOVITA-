@@ -52,6 +52,7 @@ class ReportMetrics:
     prev_trend_df: pd.DataFrame = field(default_factory=pd.DataFrame)
     sheet_actual: float | None = None
     forecast_source: str = "linear"
+    mom_source: str = "daily"
 
 
 def _month_start(d: date) -> date:
@@ -76,14 +77,34 @@ def _sum_period(df: pd.DataFrame, start: date, end: date) -> dict[str, float]:
     return {k: float(subset[k].sum()) if not subset.empty else 0.0 for k in keys}
 
 
+def _apply_footer_totals(base: dict[str, float], footer_amounts: dict[str, float]) -> dict[str, float]:
+    """用表底合计覆盖逐日加总；跳过 NaN，按需合计由四项重算。"""
+    merged = dict(base)
+    for key, value in footer_amounts.items():
+        if value == value:
+            merged[key] = float(value)
+    ondemand = ("llm", "sd", "gpu_ondemand", "gpu_storage")
+    if all(k in merged for k in ondemand):
+        merged["total_ondemand"] = sum(merged[k] for k in ondemand)
+    return merged
+
+
 def _mom(current: float, previous: float) -> tuple[float, float]:
     change = current - previous
     rate = (change / previous * 100) if previous else float("nan")
     return change, rate
 
 
-def _item(current: float, previous: float) -> dict[str, float]:
-    change, rate = _mom(current, previous)
+def _item_from_parts(
+    current: float,
+    previous: float,
+    change: float | None = None,
+    rate: float | None = None,
+) -> dict[str, float]:
+    if change is None or change != change:
+        change = current - previous
+    if rate is None or rate != rate:
+        _, rate = _mom(current, previous)
     return {"current": current, "previous": previous, "change": change, "rate": rate}
 
 
@@ -117,6 +138,14 @@ def calculate_metrics(
 
     cur_totals = _sum_period(df, cur_start, cur_end)
     prev_totals = _sum_period(df, prev_start, prev_end)
+    mom_source = "daily"
+    sheet_mom = (getattr(df, "attrs", {}) or {}).get("sheet_mom") or {}
+    footer = sheet_mom.get(report_date.month) or {}
+    if footer.get("current") and footer.get("previous"):
+        # 分项环比用表底上月同期（表已剔除 sd 7.12-7.14 一类异常）
+        cur_totals = _apply_footer_totals(cur_totals, footer["current"])
+        prev_totals = _apply_footer_totals(prev_totals, footer["previous"])
+        mom_source = "sheet_footer"
 
     current_period = PeriodMetrics(
         start=cur_start,
@@ -156,29 +185,38 @@ def calculate_metrics(
         forecast_source = "linear"
     sheet_actual = float(overrides["actual"]) if overrides.get("actual") else None
 
-    mom_changes = {key: _item(cur_totals[key], prev_totals[key]) for key in keys}
+    mom_changes = {}
+    for key in keys:
+        change = (footer.get("change") or {}).get(key)
+        rate = (footer.get("rate") or {}).get(key)
+        mom_changes[key] = _item_from_parts(cur_totals[key], prev_totals[key], change, rate)
 
     period_label = f"{cur_start.month}.{cur_start.day}-{cur_end.month}.{cur_end.day}"
     overview = [
         {
             "key": "month_total",
             "label": f"当月总消耗 ({period_label})",
-            **_item(cur_totals["total_with_fixed"], prev_totals["total_with_fixed"]),
+            **_item_from_parts(
+                cur_totals["total_with_fixed"],
+                prev_totals["total_with_fixed"],
+                (footer.get("change") or {}).get("total_with_fixed"),
+                (footer.get("rate") or {}).get("total_with_fixed"),
+            ),
         },
         {
             "key": "daily_with_fixed",
             "label": "日消耗-含固定GPU",
-            **_item(current_period.daily_avg["total_with_fixed"], previous_period.daily_avg["total_with_fixed"]),
+            **_item_from_parts(current_period.daily_avg["total_with_fixed"], previous_period.daily_avg["total_with_fixed"]),
         },
         {
             "key": "daily_ondemand",
             "label": "日消耗-按需(LLM/SD/GPU按需/存储)",
-            **_item(current_period.daily_avg["total_ondemand"], previous_period.daily_avg["total_ondemand"]),
+            **_item_from_parts(current_period.daily_avg["total_ondemand"], previous_period.daily_avg["total_ondemand"]),
         },
         {
             "key": "forecast",
             "label": f"预计{report_date.month}月总消耗",
-            **_item(forecast, prev_month_full_total),
+            **_item_from_parts(forecast, prev_month_full_total),
         },
     ]
 
@@ -202,6 +240,7 @@ def calculate_metrics(
         prev_trend_df=prev_trend_df,
         sheet_actual=sheet_actual,
         forecast_source=forecast_source,
+        mom_source=mom_source,
     )
 
 
