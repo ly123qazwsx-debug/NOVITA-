@@ -2,8 +2,8 @@ name: NOVITA Daily Cost Report
 
 on:
   schedule:
-    # 每天北京时间 09:00 = UTC 01:00
-    - cron: "0 1 * * *"
+    # 每天北京时间 11:10 = UTC 03:10
+    - cron: "10 3 * * *"
   workflow_dispatch:
 
 jobs:
@@ -21,20 +21,18 @@ jobs:
           pip install -r requirements.txt
           sudo apt-get update && sudo apt-get install -y fonts-noto-cjk
 
-      - name: Create config from secrets
-        run: |
-          cp config.example.yaml config.yaml
-        env:
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+      - name: Create config
+        run: cp config.example.yaml config.yaml
 
-      - name: Generate report
+      - name: Generate report and push to Feishu
         env:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
-        run: python main.py
+          FEISHU_RECEIVE_ID: ${{ secrets.FEISHU_RECEIVE_ID }}
+          FEISHU_RECEIVE_ID_TYPE: ${{ secrets.FEISHU_RECEIVE_ID_TYPE }}
+        run: python3 main.py
 
       - name: Upload report artifacts
         uses: actions/upload-artifact@v4

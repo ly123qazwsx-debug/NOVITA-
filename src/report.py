@@ -57,28 +57,29 @@ HTML_TEMPLATE = Template(
   <h1>NOVITA 成本日报</h1>
   <div class="subtitle">报告日期：{{ report_date }} ｜ 统计区间：{{ period_start }} ~ {{ period_end }} ｜ 币种：{{ currency }}</div>
 
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-label">当月累计消耗（含固定）</div>
-      <div class="kpi-value">{{ month_total }}</div>
-      <div class="kpi-sub">已过 {{ days }} 天</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">预计当月总消耗</div>
-      <div class="kpi-value">{{ forecast }}</div>
-      <div class="kpi-sub">按日均线性外推</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">今日消耗（含固定）</div>
-      <div class="kpi-value">{{ today_total }}</div>
-      <div class="kpi-sub">按需：{{ today_ondemand }}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">环比（含固定）</div>
-      <div class="kpi-value {{ mom_class }}">{{ mom_change }}</div>
-      <div class="kpi-sub">上月同期 {{ prev_total }} ｜ {{ mom_rate }}</div>
-    </div>
-  </div>
+  <h2>当月数据概览</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>指标</th>
+        <th>当月数据</th>
+        <th>上月同期</th>
+        <th>环比</th>
+        <th>环比率</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in overview_rows %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td>{{ row.current }}</td>
+        <td>{{ row.previous }}</td>
+        <td class="{{ row.change_class }}">{{ row.change }}</td>
+        <td class="{{ row.change_class }}">{{ row.rate }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 
   <h2>分项环比明细</h2>
   <table>
@@ -104,8 +105,8 @@ HTML_TEMPLATE = Template(
     </tbody>
   </table>
 
+  <h2>综合看板</h2>
   {% for title, img in charts %}
-  <h2>{{ title }}</h2>
   <div class="chart"><img src="{{ img }}" alt="{{ title }}" /></div>
   {% endfor %}
 </body>
@@ -115,9 +116,19 @@ HTML_TEMPLATE = Template(
 
 def build_report_context(metrics: ReportMetrics, charts: dict[str, Path]) -> dict:
     sym = metrics.currency_symbol
-    total_mom = metrics.mom_changes["total_with_fixed"]
-    change = total_mom["change"]
-    rate = total_mom["rate"]
+
+    def _row(label: str, item: dict) -> dict:
+        c = item["change"]
+        return {
+            "label": label,
+            "current": _fmt_money(item["current"], sym),
+            "previous": _fmt_money(item["previous"], sym),
+            "change": _fmt_money(c, sym),
+            "rate": _fmt_rate(item["rate"]),
+            "change_class": "up" if c > 0 else ("down" if c < 0 else ""),
+        }
+
+    overview_rows = [_row(item["label"], item) for item in metrics.overview]
 
     mom_rows = []
     for key in COST_COLUMNS:
@@ -135,11 +146,7 @@ def build_report_context(metrics: ReportMetrics, charts: dict[str, Path]) -> dic
         )
 
     chart_titles = {
-        "daily_trend": "日消耗趋势（含固定 vs 按需）",
-        "category_stacked": "分项每日消耗（堆叠图）",
-        "category_lines": "各分项每日趋势",
-        "mom_comparison": "当月同期 vs 上月同期",
-        "mom_rate": "分项环比率",
+        "dashboard": "NOVITA 成本综合看板",
     }
 
     return {
@@ -148,14 +155,7 @@ def build_report_context(metrics: ReportMetrics, charts: dict[str, Path]) -> dic
         "period_end": metrics.current_period.end.isoformat(),
         "currency": metrics.currency,
         "days": metrics.current_period.days,
-        "month_total": _fmt_money(metrics.current_period.totals["total_with_fixed"], sym),
-        "forecast": _fmt_money(metrics.forecast_month_total, sym),
-        "today_total": _fmt_money(metrics.today["total_with_fixed"], sym),
-        "today_ondemand": _fmt_money(metrics.today["total_ondemand"], sym),
-        "prev_total": _fmt_money(total_mom["previous"], sym),
-        "mom_change": _fmt_money(change, sym),
-        "mom_rate": _fmt_rate(rate),
-        "mom_class": "up" if change > 0 else ("down" if change < 0 else ""),
+        "overview_rows": overview_rows,
         "mom_rows": mom_rows,
         "charts": [(chart_titles[k], _img_to_base64(v)) for k, v in charts.items()],
     }
@@ -172,24 +172,30 @@ def generate_html_report(metrics: ReportMetrics, charts: dict[str, Path], output
 
 def generate_markdown_summary(metrics: ReportMetrics) -> str:
     sym = metrics.currency_symbol
-    total = metrics.mom_changes["total_with_fixed"]
     lines = [
-        f"📊 **NOVITA 成本日报** | {metrics.report_date}",
+        f"📊 NOVITA 成本日报 | {metrics.report_date}",
+        f"统计区间：{metrics.current_period.start} ~ {metrics.current_period.end}（{metrics.current_period.days} 天）｜单位：{metrics.currency}",
         "",
-        f"**当月累计（含固定）**：{_fmt_money(total['current'], sym)}（{metrics.current_period.days} 天）",
-        f"**预计全月消耗**：{_fmt_money(metrics.forecast_month_total, sym)}",
-        f"**今日消耗**：{_fmt_money(metrics.today['total_with_fixed'], sym)}（按需 {_fmt_money(metrics.today['total_ondemand'], sym)}）",
-        f"**环比**：{_fmt_money(total['change'], sym)}（{_fmt_rate(total['rate'])}）｜上月同期 {_fmt_money(total['previous'], sym)}",
-        "",
-        "**分项环比明细**",
-        "| 分项 | 当月同期 | 上月同期 | 环比 | 环比率 |",
-        "|------|----------|----------|------|--------|",
+        "【当月数据概览】",
+        "指标 | 当月数据 | 上月同期 | 环比 | 环比率",
     ]
+    for item in metrics.overview:
+        lines.append(
+            f"{item['label']} | {_fmt_money(item['current'], sym)} | "
+            f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])}"
+        )
+    lines.extend(
+        [
+            "",
+            "【分项环比明细】",
+            "分项 | 当月同期 | 上月同期 | 环比 | 环比率",
+        ]
+    )
     for key in COST_COLUMNS:
         item = metrics.mom_changes[key]
         lines.append(
-            f"| {CATEGORY_LABELS[key]} | {_fmt_money(item['current'], sym)} | "
-            f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])} |"
+            f"{CATEGORY_LABELS[key]} | {_fmt_money(item['current'], sym)} | "
+            f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])}"
         )
     lines.append("")
     lines.append(f"_生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_")

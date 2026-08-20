@@ -91,3 +91,39 @@ class FeishuClient:
         data = resp.json()
         if data.get("code") not in (0, None) and data.get("StatusCode") not in (0, None):
             raise RuntimeError(f"Webhook 推送失败: {data}")
+
+    def upload_image(self, image_path: str) -> str:
+        """上传图片，返回 image_key。"""
+        with open(image_path, "rb") as f:
+            resp = requests.post(
+                f"{self.base_url}/im/v1/images",
+                headers=self._headers(),
+                files={"image": f},
+                data={"image_type": "message"},
+                timeout=60,
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            raise RuntimeError(f"上传图片失败: {data}")
+        return data["data"]["image_key"]
+
+    def send_app_message(
+        self,
+        receive_id: str,
+        msg_type: str,
+        content: dict[str, Any],
+        receive_id_type: str = "chat_id",
+    ) -> None:
+        import json
+
+        self._request(
+            "POST",
+            "/im/v1/messages",
+            params={"receive_id_type": receive_id_type},
+            json={
+                "receive_id": receive_id,
+                "msg_type": msg_type,
+                "content": json.dumps(content, ensure_ascii=False),
+            },
+        )
