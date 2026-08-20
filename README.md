@@ -58,8 +58,9 @@ NOVITA（截止到8月19号）：
 
 1. 打开 [飞书开放平台](https://open.feishu.cn/app) → 创建企业自建应用
 2. 开通权限：`wiki:wiki:readonly`、`sheets:spreadsheet:readonly`、`im:message`、`im:resource`
-3. 创建版本并发布，管理后台审批
-4. 打开 NOVITA Wiki 文档 → 右上角 `...` → 添加文档应用
+3. **必须开启「机器人」能力**（应用能力 → 机器人）。没有这一项，图表文件生成了也传不进飞书群
+4. 创建版本并发布，管理后台审批
+5. 打开 NOVITA Wiki 文档 → 右上角 `...` → 添加文档应用
 
 ### 2. 创建群机器人（收报告）
 
@@ -78,6 +79,21 @@ NOVITA（截止到8月19号）：
 | `FEISHU_WEBHOOK_URL` | 是 | 群机器人 Webhook |
 
 配置完成后，可在 Actions 里手动点一次 **NOVITA Daily Cost Report → Run workflow** 验证。之后每天 11:10 自动跑。
+
+## 群里只有文字、没有图？
+
+图**已经生成了**（在 Actions 的 Artifacts 里能下载 `novita_dashboard.png`）。群里看不到，是因为飞书上传图片失败。上次日志是：
+
+`上传图表 dashboard 失败: 400 Client Error ... /im/v1/images`
+
+请检查飞书应用：
+
+1. 开放平台 → 你的应用 → **应用能力** → 开启 **机器人**
+2. 权限管理开通 **`im:resource`（获取与上传图片或文件资源）**
+3. **创建版本 → 发布**（改权限后必须重新发布才生效）
+4. 再跑一次 Actions
+
+合并本仓库最新修复后：上传会改用 RGB/JPEG（飞书不认透明 PNG），失败原因会直接写在群消息里。
 
 ## 本地试跑
 

@@ -83,6 +83,18 @@ def test_dashboard_generates_one_image():
         assert list(charts) == ["dashboard"]
         assert charts["dashboard"].exists()
         assert charts["dashboard"].stat().st_size > 20_000
+        from PIL import Image
+
+        im = Image.open(charts["dashboard"])
+        assert im.mode == "RGB"
+
+
+def test_image_upload_error_explains_missing_bot():
+    from src.feishu_client import _explain_image_upload_error
+
+    text = _explain_image_upload_error(400, {"code": 234007, "msg": "App does not enable bot feature."})
+    assert "234007" in text
+    assert "机器人" in text
 
 
 def _mtd_frame() -> pd.DataFrame:
