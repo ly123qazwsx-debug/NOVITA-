@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Template
@@ -173,19 +172,5 @@ def generate_html_report(metrics: ReportMetrics, charts: dict[str, Path], output
 
 
 def generate_markdown_summary(metrics: ReportMetrics, extra_notes: list[str] | None = None) -> str:
-    brief = format_daily_brief(metrics, extra_notes)
-    extra = [
-        "",
-        "【分项环比明细】",
-        "分项 | 当月同期 | 上月同期 | 环比 | 环比率",
-    ]
-    sym = metrics.currency_symbol
-    for key in COST_COLUMNS:
-        item = metrics.mom_changes[key]
-        extra.append(
-            f"{CATEGORY_LABELS[key]} | {_fmt_money(item['current'], sym)} | "
-            f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])}"
-        )
-    extra.append("")
-    extra.append(f"_生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_")
-    return brief + "\n" + "\n".join(extra)
+    """日报正文只保留业务模版，不含额外表格。"""
+    return format_daily_brief(metrics, extra_notes)
