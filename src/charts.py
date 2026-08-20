@@ -12,25 +12,26 @@ from matplotlib.ticker import FuncFormatter
 
 from .metrics import CATEGORY_LABELS, ReportMetrics
 
-BG = "#101412"
-CARD = "#171C1A"
-CARD_LINE = "#2A3A34"
-TEXT = "#F4F7F5"
-MUTED = "#9AA8A3"
-GRID = "#2C3833"
-AUG = "#39E58C"
-JUL = "#8FB8A6"
-BAR_FIXED = "#39E58C"
-ACCENT = "#39E58C"
+BG = "#0C0C0C"
+CARD = "#161410"
+CARD_LINE = "#3D3820"
+TEXT = "#F7F4E8"
+MUTED = "#B8B08A"
+GRID = "#332F1C"
+# 主色对齐 Digen Playground：rgb(255, 212, 0)
+ACCENT = "#FFD400"
+AUG = "#FFD400"
+JUL = "#8A7E4A"
+BAR_FIXED = "#FFD400"
 UP = "#FF7B7B"
-DOWN = "#39E58C"
-HEADER_GREEN = "#14352C"
+DOWN = "#5FD68A"
+HEADER_GOLD = "#3A3100"
 UNIT = "美元"
 UNIT_TAG = "单位：美元"
 
 LINE_COLORS = {
     "llm": "#5CE1E6",
-    "sd": "#F5A623",
+    "sd": "#FF6B2C",
     "gpu_ondemand": "#C4A0FF",
     "gpu_storage": "#7DD3FC",
 }
@@ -137,7 +138,7 @@ def _legend(ax, **kwargs) -> None:
     if leg is None:
         return
     frame = leg.get_frame()
-    frame.set_facecolor("#121816")
+    frame.set_facecolor("#14120A")
     frame.set_edgecolor(CARD_LINE)
     frame.set_linewidth(0.6)
     for text in leg.get_texts():
@@ -160,7 +161,7 @@ def _value_label(ax, x, y, text: str, color: str, offset=(0, 9), fontsize: float
         annotation_clip=False,
         bbox={
             "boxstyle": "round,pad=0.22",
-            "facecolor": "#101612",
+            "facecolor": "#14120A",
             "edgecolor": color,
             "linewidth": 0.7,
             "alpha": 0.94,
@@ -254,7 +255,7 @@ def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
     ax.set_xticks(xs)
     ax.set_xticklabels([f"当月总消耗", f"预计{cur_m}月总消耗"], fontsize=16)
     ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
-    ax.set_title(_titled("累计与预计总消耗对比"), fontsize=22, color=TEXT, loc="left", pad=14, fontweight="bold")
+    ax.set_title(_titled("累计与预计总消耗对比"), fontsize=22, color=ACCENT, loc="left", pad=14, fontweight="bold")
     _legend(ax, loc="upper left")
 
     for bars in (bars_aug, bars_jul):
@@ -313,7 +314,7 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(labels, fontsize=16)
     ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
-    ax.set_title(_titled("日消耗对比"), fontsize=22, color=TEXT, loc="left", pad=14, fontweight="bold")
+    ax.set_title(_titled("日消耗对比"), fontsize=22, color=ACCENT, loc="left", pad=14, fontweight="bold")
     _legend(ax, loc="upper right")
     for bars in (b1, b2):
         for bar in bars:
@@ -351,7 +352,7 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
     df = metrics.trend_df.sort_values("date").copy()
     _style_ax(ax, both_grids=True)
     if df.empty:
-        ax.set_title("暂无趋势数据", loc="left", color=TEXT)
+        ax.set_title("暂无趋势数据", loc="left", color=ACCENT)
         return
 
     x = np.arange(len(df))
@@ -432,7 +433,7 @@ def _plot_main_trend(ax, metrics: ReportMetrics) -> None:
     ax.set_title(
         _titled(f"NOVITA {month}月日度趋势详情 ｜ 主要成本"),
         fontsize=22,
-        color=TEXT,
+        color=ACCENT,
         loc="left",
         pad=34,
         fontweight="bold",
@@ -464,7 +465,7 @@ def _plot_low_cost_trend(ax, metrics: ReportMetrics) -> None:
     _style_ax(ax, both_grids=True)
     _money_axis(ax)
     if df.empty:
-        ax.set_title("暂无趋势数据", loc="left", color=TEXT)
+        ax.set_title("暂无趋势数据", loc="left", color=ACCENT)
         return
 
     x = np.arange(len(df))
@@ -512,7 +513,7 @@ def _plot_low_cost_trend(ax, metrics: ReportMetrics) -> None:
     ax.set_xlim(-0.65, len(x) - 0.35)
     ax.set_ylim(0, max(ymax * 1.45, 10))
     ax.set_ylabel(f"金额（{UNIT}）", fontsize=16, color=MUTED)
-    ax.set_title(_titled("低金额成本 ｜ 独立放大显示"), fontsize=22, color=TEXT, loc="left", pad=32, fontweight="bold")
+    ax.set_title(_titled("低金额成本 ｜ 独立放大显示"), fontsize=22, color=ACCENT, loc="left", pad=32, fontweight="bold")
     _legend(ax, loc="lower left", bbox_to_anchor=(0.0, 1.01), ncol=2, borderaxespad=0)
     p = metrics.current_period
     ax.text(
@@ -533,7 +534,7 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     month_total = metrics.current_period.totals["total_with_fixed"]
     cur_m = metrics.current_period.end.month
     note = "（上月同期用表底合计，已剔除 sd 7.12-7.14 异常）" if getattr(metrics, "mom_source", "daily") == "sheet_footer" else ""
-    ax.set_title(_titled(f"分项环比明细{note}"), fontsize=22, color=TEXT, loc="left", pad=12, fontweight="bold")
+    ax.set_title(_titled(f"分项环比明细{note}"), fontsize=22, color=ACCENT, loc="left", pad=12, fontweight="bold")
 
     rows = [{"key": k, "label": CATEGORY_LABELS[k], **metrics.mom_changes[k]} for k in MOM_ROW_ORDER]
     rows.append({"key": "total", "label": "总消耗", **metrics.mom_changes["total_with_fixed"]})
@@ -543,7 +544,7 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     for idx, item in enumerate(rows):
         share = item["current"] / month_total * 100 if month_total else 0
         is_total = item["key"] == "total"
-        stripe = "#1B3329" if is_total else ("#1A2220" if idx % 2 else "#141A18")
+        stripe = "#2E2A12" if is_total else ("#1C1A12" if idx % 2 else "#141310")
         rate = item["rate"]
         cell_text.append(
             [
@@ -562,18 +563,18 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
         colLabels=["计费项", f"{cur_m}月合计（{UNIT}）", f"上月同期（{UNIT}）", f"增减额（{UNIT}）", "环比率", "占本期成本"],
         loc="center",
         cellLoc="center",
-        colColours=[HEADER_GREEN] * 6,
+        colColours=[HEADER_GOLD] * 6,
         cellColours=cell_colors,
     )
     table.auto_set_font_size(False)
     table.set_fontsize(16)
     table.scale(1, 2.15)
     for (row, col), cell in table.get_celld().items():
-        cell.set_edgecolor("#24332E")
+        cell.set_edgecolor("#4A4018")
         cell.set_linewidth(0.55)
         if row == 0:
             cell.set_text_props(fontweight="bold", color=TEXT)
-            cell.set_facecolor(HEADER_GREEN)
+            cell.set_facecolor(HEADER_GOLD)
         else:
             cell.set_text_props(color=TEXT)
             if col == 0:
@@ -620,7 +621,7 @@ def plot_dashboard(
         f"NOVITA {p.end.month}月成本概览",
         fontsize=42,
         fontweight="bold",
-        color=TEXT,
+        color=ACCENT,
         va="center",
         transform=title_ax.transAxes,
     )
@@ -675,7 +676,7 @@ def _flatten_png_to_rgb(path: Path) -> Path:
     im = Image.open(path)
     if im.mode == "RGB":
         return path
-    bg = Image.new("RGB", im.size, (16, 20, 18))
+    bg = Image.new("RGB", im.size, (12, 12, 10))
     rgba = im.convert("RGBA")
     bg.paste(rgba, mask=rgba.split()[-1])
     bg.save(path, "PNG", optimize=True)
