@@ -123,16 +123,16 @@ def main() -> int:
         print("正在从飞书 NOVITA 工作表拉取数据...")
         df = fetch_cost_data(client, config)
         print(f"已读取 {len(df)} 条记录，日期范围 {df['date'].min()} ~ {df['date'].max()}")
-        month_start = date.today().replace(day=1)
-        if df["date"].max() < month_start:
-            print(
-                f"警告：最新数据停在 {df['date'].max()}，未覆盖本月。"
-                "请确认 NOVITA 表已填到昨天，并把 data_source.range 设为 A1:L400 一类能覆盖全年的区域。"
-            )
 
     extra_notes = list(config.get("insights", {}).get("extra_notes") or [])
 
     metrics = calculate_metrics(df, config)
+    print(
+        f"统计口径：今天 {metrics.generated_on.month}月{metrics.generated_on.day}日，"
+        f"区间 {metrics.current_period.start.month}月{metrics.current_period.start.day}日"
+        f"～{metrics.current_period.end.month}月{metrics.current_period.end.day}日"
+        f"（不含当天，共 {metrics.current_period.days} 天）"
+    )
     charts = generate_all_charts(metrics, output_dir / "charts", extra_notes)
     html_path = generate_html_report(metrics, charts, output_dir)
     md_path = output_dir / f"novita_summary_{metrics.report_date.isoformat()}.md"

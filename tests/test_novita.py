@@ -23,6 +23,10 @@ SAMPLE_ROWS = [
 ]
 
 
+TEST_CONFIG = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
+AS_OF = date(2026, 8, 19)
+
+
 def test_parse_skips_summary_and_handles_cn_dates():
     df = parse_novita_rows(SAMPLE_ROWS)
     assert list(df["date"]) == [
@@ -37,8 +41,7 @@ def test_parse_skips_summary_and_handles_cn_dates():
 
 def test_metrics_match_sheet_overview_logic():
     df = parse_novita_rows(SAMPLE_ROWS)
-    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
-    metrics = calculate_metrics(df, config)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
     # 今天 8.20 → 统计到 8.19
     assert metrics.report_date == date(2026, 8, 19)
     assert metrics.current_period.start == date(2026, 8, 1)
@@ -62,11 +65,36 @@ def test_metrics_exclude_today_even_if_present():
     extra["date"] = date(2026, 8, 20)
     extra["llm"] = 9999
     df = pd.concat([df, extra], ignore_index=True)
-    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
-    metrics = calculate_metrics(df, config)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
     assert metrics.report_date == date(2026, 8, 19)
+    assert metrics.current_period.start == date(2026, 8, 1)
     assert metrics.current_period.end == date(2026, 8, 19)
-    assert 9999 not in set(metrics.trend_df["llm"])
+    assert metrics.current_period.days == 19
+    assert 9999 not in set(metrics.trend_df["llm"].dropna())
+    assert len(metrics.trend_df) == 19
+
+
+def test_metrics_do_not_slide_to_older_month():
+    import pytest
+
+    df = parse_novita_rows(SAMPLE_ROWS)
+    df = df[df["date"] < date(2026, 8, 1)].copy()
+    with pytest.raises(ValueError, match="没有"):
+        calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+
+
+def test_parse_sheet_forecast_override():
+    from src.data_fetcher import parse_sheet_overrides
+
+    rows = [
+        ["预计8月总消耗", 59552.27, "实际", 60910.12],
+    ]
+    assert parse_sheet_overrides(rows)["forecast"] == 59552.27
+    df = parse_novita_rows(SAMPLE_ROWS)
+    df.attrs["sheet_overrides"] = {"forecast": 59552.27}
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+    assert abs(metrics.forecast_month_total - 59552.27) < 1e-6
+    assert metrics.forecast_source == "sheet"
 
 
 def test_dashboard_generates_one_image():
@@ -76,8 +104,7 @@ def test_dashboard_generates_one_image():
     from src.charts import generate_all_charts
 
     df = parse_novita_rows(SAMPLE_ROWS)
-    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
-    metrics = calculate_metrics(df, config)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
     with tempfile.TemporaryDirectory() as td:
         charts = generate_all_charts(metrics, Path(td), ["机器本月新加12台：5090普*3台、4090*9台"])
         assert list(charts) == ["dashboard"]
@@ -135,8 +162,7 @@ def test_daily_brief_matches_business_template():
     assert mom_cn(-13.6) == "环比下降14%"
     assert mom_cn(0) == "环比持平"
 
-    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
-    metrics = calculate_metrics(_mtd_frame(), config)
+    metrics = calculate_metrics(_mtd_frame(), TEST_CONFIG, as_of=AS_OF)
     note = "机器本月新加12台：5090普*3台、4090*9台"
     brief = format_daily_brief(metrics, [note])
 

@@ -177,5 +177,37 @@ def fetch_cost_data(client: FeishuClient, config: dict[str, Any]) -> pd.DataFram
     if not sheet_id:
         raise ValueError("请在 config 中配置 sheet_id 或 sheet_name")
 
-    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:L400")
-    return parse_novita_rows(raw_rows)
+    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:R400")
+    df = parse_novita_rows(raw_rows)
+    df.attrs["sheet_overrides"] = parse_sheet_overrides(raw_rows)
+    return df
+
+
+def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
+    """读取表内「预计 / 实际」汇总，优先用表上的预计全月，而不是简单按日线性外推。"""
+    overrides: dict[str, float] = {}
+    for row in raw_rows:
+        if not row:
+            continue
+        for i, cell in enumerate(row):
+            label = _norm(cell).replace(" ", "").replace("　", "")
+            if not label:
+                continue
+            amount = _first_amount_after(row, i)
+            if amount is None:
+                continue
+            if "预计" in label and ("消耗" in label or "全月" in label or label.endswith("预计")):
+                overrides.setdefault("forecast", amount)
+            elif "实际" in label and ("消耗" in label or "全月" in label):
+                overrides.setdefault("actual", amount)
+    return overrides
+
+
+def _first_amount_after(row: list[Any], start: int) -> float | None:
+    for cell in row[start + 1 : start + 6]:
+        if _norm(cell) == "":
+            continue
+        amount = _parse_amount(cell)
+        if amount > 100:
+            return amount
+    return None
