@@ -9,6 +9,7 @@ from pathlib import Path
 from jinja2 import Template
 
 from .data_fetcher import COST_COLUMNS
+from .insights import format_daily_brief
 from .metrics import CATEGORY_LABELS, ReportMetrics
 
 
@@ -171,33 +172,20 @@ def generate_html_report(metrics: ReportMetrics, charts: dict[str, Path], output
     return path
 
 
-def generate_markdown_summary(metrics: ReportMetrics) -> str:
-    sym = metrics.currency_symbol
-    lines = [
-        f"📊 NOVITA {metrics.current_period.end.month}月成本概览 | 截至 {metrics.report_date}",
-        f"统计区间：{metrics.current_period.start} ~ {metrics.current_period.end}（截至昨日，共 {metrics.current_period.days} 天）｜单位：{metrics.currency}",
+def generate_markdown_summary(metrics: ReportMetrics, extra_notes: list[str] | None = None) -> str:
+    brief = format_daily_brief(metrics, extra_notes)
+    extra = [
         "",
-        "【当月数据概览】",
-        "指标 | 当月数据 | 上月同期 | 环比 | 环比率",
+        "【分项环比明细】",
+        "分项 | 当月同期 | 上月同期 | 环比 | 环比率",
     ]
-    for item in metrics.overview:
-        lines.append(
-            f"{item['label']} | {_fmt_money(item['current'], sym)} | "
-            f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])}"
-        )
-    lines.extend(
-        [
-            "",
-            "【分项环比明细】",
-            "分项 | 当月同期 | 上月同期 | 环比 | 环比率",
-        ]
-    )
+    sym = metrics.currency_symbol
     for key in COST_COLUMNS:
         item = metrics.mom_changes[key]
-        lines.append(
+        extra.append(
             f"{CATEGORY_LABELS[key]} | {_fmt_money(item['current'], sym)} | "
             f"{_fmt_money(item['previous'], sym)} | {_fmt_money(item['change'], sym)} | {_fmt_rate(item['rate'])}"
         )
-    lines.append("")
-    lines.append(f"_生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_")
-    return "\n".join(lines)
+    extra.append("")
+    extra.append(f"_生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_")
+    return brief + "\n" + "\n".join(extra)

@@ -9,10 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .data_fetcher import COST_COLUMNS
+from .insights import format_daily_brief
 from .feishu_client import FeishuClient
-from .metrics import CATEGORY_LABELS, ReportMetrics
-from .report import _fmt_money, _fmt_rate, generate_markdown_summary
+from .metrics import ReportMetrics
 
 
 CHART_TITLES = {
@@ -37,47 +36,19 @@ def _attach_sign(payload: dict[str, Any], secret: str) -> dict[str, Any]:
     return payload
 
 
-def build_card(metrics: ReportMetrics, image_keys: dict[str, str] | None = None) -> dict[str, Any]:
-    """构建飞书交互卡片。数字始终带上，图片有则附上。"""
+def build_card(
+    metrics: ReportMetrics,
+    image_keys: dict[str, str] | None = None,
+    extra_notes: list[str] | None = None,
+) -> dict[str, Any]:
+    """构建飞书交互卡片：先发指定模版文字，再附图。"""
     image_keys = image_keys or {}
-    p = metrics.current_period
-    sym = metrics.currency_symbol
-
-    overview_lines = []
-    for row in metrics.overview:
-        overview_lines.append(
-            f"**{row['label']}**\n"
-            f"当月 {_fmt_money(row['current'], sym)} ｜ "
-            f"{'上月全月' if row['key'] == 'forecast' else '上月同期'} {_fmt_money(row['previous'], sym)} ｜ "
-            f"环比 {_fmt_money(row['change'], sym)} ｜ "
-            f"{_fmt_rate(row['rate'])}"
-        )
-
-    category_lines = ["**分项环比明细**"]
-    for key in COST_COLUMNS:
-        item = metrics.mom_changes[key]
-        category_lines.append(
-            f"• {CATEGORY_LABELS[key]}：{_fmt_money(item['current'], sym)} ｜ "
-            f"上月 {_fmt_money(item['previous'], sym)} ｜ "
-            f"{_fmt_money(item['change'], sym)}（{_fmt_rate(item['rate'])}）"
-        )
+    brief = format_daily_brief(metrics, extra_notes)
 
     elements: list[dict[str, Any]] = [
         {
             "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": (
-                    f"统计区间：**{p.start.month}月{p.start.day}日 – {p.end.month}月{p.end.day}日**"
-                    f"（截至昨日，共 {p.days} 天）｜ 单位：{metrics.currency}\n\n"
-                    + "\n\n".join(overview_lines)
-                ),
-            },
-        },
-        {"tag": "hr"},
-        {
-            "tag": "div",
-            "text": {"tag": "lark_md", "content": "\n".join(category_lines)},
+            "text": {"tag": "lark_md", "content": brief},
         },
     ]
 
@@ -97,7 +68,7 @@ def build_card(metrics: ReportMetrics, image_keys: dict[str, str] | None = None)
 
     return {
         "header": {
-            "title": {"tag": "plain_text", "content": f"NOVITA 成本日报 {metrics.report_date}"},
+            "title": {"tag": "plain_text", "content": f"NOVITA（截止到{metrics.current_period.end.month}月{metrics.current_period.end.day}号）"},
             "template": "blue",
         },
         "elements": elements,
@@ -123,6 +94,7 @@ def push_daily_report(
     webhook_secret: str = "",
     receive_id: str = "",
     receive_id_type: str = "chat_id",
+    extra_notes: list[str] | None = None,
 ) -> None:
     image_keys: dict[str, str] = {}
     if client is not None:
@@ -131,7 +103,7 @@ def push_daily_report(
         except Exception as exc:  # noqa: BLE001
             print(f"图表上传跳过: {exc}")
 
-    card = build_card(metrics, image_keys)
+    card = build_card(metrics, image_keys, extra_notes)
 
     sent = False
     if receive_id and client is not None:
@@ -149,7 +121,7 @@ def push_daily_report(
         except Exception as exc:  # noqa: BLE001
             print(f"卡片 Webhook 失败，改为纯文本: {exc}")
             text_payload = _attach_sign(
-                {"msg_type": "text", "content": {"text": generate_markdown_summary(metrics)}},
+                {"msg_type": "text", "content": {"text": format_daily_brief(metrics, extra_notes)}},
                 webhook_secret,
             )
             sender.send_webhook_message(webhook_url, text_payload)

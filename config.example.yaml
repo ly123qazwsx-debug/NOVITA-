@@ -21,7 +21,11 @@ report:
   timezone: "Asia/Shanghai"
   output_dir: "output"
 
-# 飞书推送：配置 webhook 或 receive_id 后自动发送
+# 每月可改的人工备注，会写进日报「其中」
+insights:
+  extra_notes:
+    - "机器本月新加12台：5090普*3台、4090*9台"
+
 push:
   enabled: true
   webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
