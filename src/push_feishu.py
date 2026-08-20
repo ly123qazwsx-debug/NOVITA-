@@ -49,7 +49,7 @@ def build_card(
     elements: list[dict[str, Any]] = [
         {
             "tag": "div",
-            "text": {"tag": "lark_md", "content": brief},
+            "text": {"tag": "plain_text", "content": brief},
         },
     ]
 
@@ -117,6 +117,7 @@ def push_daily_report(
     receive_id_type: str = "chat_id",
     extra_notes: list[str] | None = None,
 ) -> None:
+    brief = format_daily_brief(metrics, extra_notes)
     image_keys: dict[str, str] = {}
     upload_error = ""
     if client is not None:
@@ -126,30 +127,37 @@ def push_daily_report(
             upload_error = str(exc)
             print(f"图表上传跳过: {exc}")
 
-    card = build_card(metrics, image_keys, extra_notes, upload_error)
-
     sent = False
     if receive_id and client is not None:
-        client.send_app_message(receive_id, "interactive", card, receive_id_type)
+        client.send_app_message(
+            receive_id,
+            "text",
+            {"text": brief},
+            receive_id_type,
+        )
         sent = True
-        print(f"已通过应用消息发送到 {receive_id_type}:{receive_id}")
+        print(f"已通过应用消息发送日报到 {receive_id_type}:{receive_id}")
+        img_key = image_keys.get("dashboard")
+        if img_key:
+            client.send_app_message(
+                receive_id,
+                "image",
+                {"image_key": img_key},
+                receive_id_type,
+            )
 
     if webhook_url and "xxxx" not in webhook_url:
         sender = client or FeishuClient("webhook-only", "webhook-only")
-        payload = _attach_sign({"msg_type": "interactive", "card": card}, webhook_secret)
         try:
-            sender.send_webhook_message(webhook_url, payload)
-            sent = True
-            print("已通过 Webhook 推送到飞书群")
-        except Exception as exc:  # noqa: BLE001
-            print(f"卡片 Webhook 失败，改为纯文本: {exc}")
-            text_payload = _attach_sign(
-                {"msg_type": "text", "content": {"text": format_daily_brief(metrics, extra_notes)}},
-                webhook_secret,
+            sender.send_webhook_message(
+                webhook_url,
+                _attach_sign({"msg_type": "text", "content": {"text": brief}}, webhook_secret),
             )
-            sender.send_webhook_message(webhook_url, text_payload)
             sent = True
-            print("已通过 Webhook 推送文本摘要")
+            print("已通过 Webhook 推送日报正文")
+        except Exception as exc:  # noqa: BLE001
+            print(f"日报文本推送失败: {exc}")
+            raise
 
         img_key = image_keys.get("dashboard")
         if img_key:
@@ -161,6 +169,14 @@ def push_daily_report(
                 print("已通过 Webhook 推送看板图片")
             except Exception as exc:  # noqa: BLE001
                 print(f"图片 Webhook 失败: {exc}")
+        elif upload_error:
+            sender.send_webhook_message(
+                webhook_url,
+                _attach_sign(
+                    {"msg_type": "text", "content": {"text": f"看板图未发出：{upload_error}"}},
+                    webhook_secret,
+                ),
+            )
 
     if not sent:
         raise RuntimeError("未配置 FEISHU_WEBHOOK_URL 或 FEISHU_RECEIVE_ID，无法推送")

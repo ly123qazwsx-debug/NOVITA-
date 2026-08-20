@@ -166,14 +166,18 @@ def test_daily_brief_matches_business_template():
     note = "机器本月新加12台：5090普*3台、4090*9台"
     brief = format_daily_brief(metrics, [note])
 
-    assert brief.startswith("NOVITA（截止到8月19号）：")
-    assert "1、当月总消耗（8.1-8.19）——" in brief
-    assert "2、日消耗-含固定GPU——" in brief
-    assert "3、日消耗-按需(LLM/SD/GPU按需/存储）——" in brief
-    assert "4、预计8月总消耗——" in brief
-    assert "环比上涨" in brief
-    assert "其中：" in brief
-    assert f"以LLM、机器上涨比较明显（{note}）" in brief
-    assert "LLM18号、19号消耗增长较大，辛苦查看一下异常" in brief
+    lines = brief.splitlines()
+    assert lines[0] == "NOVITA（截止到8月19号）："
+    assert lines[1].startswith("1、当月总消耗（8.1-8.19）——$")
+    assert lines[2].startswith("2、日消耗-含固定GPU——$")
+    assert lines[3].startswith("3、日消耗-按需(LLM/SD/GPU按需/存储）——$")
+    assert lines[4].startswith("4、预计8月总消耗——$")
+    assert "（环比" in lines[4]
+    assert lines[5] == ""
+    assert lines[6] == "其中："
+    assert lines[7] == f"1、以LLM\\机器上涨比较明显（{note}）"
+    assert lines[8] == "2、LLM18号、19号消耗增长较大，辛苦查看一下异常"
+    assert "分项环比" not in brief
+    assert "暂未见" not in brief
     spikes = detect_recent_spikes(metrics)
     assert any("LLM18号、19号" in s for s in spikes)

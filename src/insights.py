@@ -87,7 +87,7 @@ def _rising_headline(metrics: ReportMetrics, extra_notes: list[str], min_rate: f
     if not names:
         names = [item.split("（")[0] for item in rising_items(metrics, min_rate)]
     if names:
-        text = "以" + "、".join(names) + "上涨比较明显"
+        text = "以" + "\\".join(names) + "上涨比较明显"
         if extra_notes:
             text += "（" + "；".join(extra_notes) + "）"
         return text
@@ -107,13 +107,6 @@ def build_highlights(metrics: ReportMetrics, extra_notes: list[str] | None = Non
     spikes = detect_recent_spikes(metrics)
     if spikes:
         points.extend(spikes)
-    else:
-        last = metrics.trend_df.sort_values("date").tail(2)
-        if len(last) == 2:
-            d1, d2 = last.iloc[0]["date"], last.iloc[1]["date"]
-            points.append(
-                f"近两日（{d1.month}月{d1.day}日、{d2.month}月{d2.day}日）按需分项未较日均明显偏离，暂未见异常峰值"
-            )
     return points
 
 
