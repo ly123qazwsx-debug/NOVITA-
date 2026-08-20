@@ -37,7 +37,7 @@ LINE_COLORS = {
 
 KPI_LABELS = {
     "daily_with_fixed": "日消耗-含固定GPU",
-    "daily_ondemand": "日消耗-按需计费",
+    "daily_ondemand": "日消耗-按需(LLM/SD/GPU按需/存储）",
 }
 
 MOM_ROW_ORDER = ["gpu_fixed", "llm", "sd", "gpu_ondemand", "gpu_storage"]
@@ -199,11 +199,22 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
         )
     )
     label = KPI_LABELS.get(item["key"], item["label"])
-    ax.text(0.07, 0.80, label, fontsize=18, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
-    ax.text(0.07, 0.64, UNIT_TAG, fontsize=13, color=MUTED, va="center", transform=ax.transAxes)
+    split_at = label.find("(")
+    if split_at > 0:
+        ax.text(0.07, 0.84, label[:split_at], fontsize=17, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
+        ax.text(0.07, 0.70, label[split_at:], fontsize=13.5, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
+        unit_y = 0.56
+        value_y = 0.36
+        rate_y = 0.15
+    else:
+        ax.text(0.07, 0.80, label, fontsize=18, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
+        unit_y = 0.64
+        value_y = 0.40
+        rate_y = 0.16
+    ax.text(0.07, unit_y, UNIT_TAG, fontsize=13, color=MUTED, va="center", transform=ax.transAxes)
     ax.text(
         0.07,
-        0.40,
+        value_y,
         _fmt_amt(item["current"]),
         fontsize=30,
         fontweight="bold",
@@ -215,7 +226,7 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
     change = item["change"]
     ax.text(
         0.07,
-        0.16,
+        rate_y,
         f"{_rate_arrow(rate)} {_fmt_pct_signed(rate)}    {_fmt_signed_amt(change)}",
         fontsize=14.5,
         color=_rate_color(rate),
