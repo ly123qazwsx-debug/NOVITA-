@@ -177,5 +177,5 @@ def fetch_cost_data(client: FeishuClient, config: dict[str, Any]) -> pd.DataFram
     if not sheet_id:
         raise ValueError("请在 config 中配置 sheet_id 或 sheet_name")
 
-    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds["range"])
+    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:L400")
     return parse_novita_rows(raw_rows)

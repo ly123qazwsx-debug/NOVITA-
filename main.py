@@ -123,6 +123,12 @@ def main() -> int:
         print("正在从飞书 NOVITA 工作表拉取数据...")
         df = fetch_cost_data(client, config)
         print(f"已读取 {len(df)} 条记录，日期范围 {df['date'].min()} ~ {df['date'].max()}")
+        month_start = date.today().replace(day=1)
+        if df["date"].max() < month_start:
+            print(
+                f"警告：最新数据停在 {df['date'].max()}，未覆盖本月。"
+                "请确认 NOVITA 表已填到昨天，并把 data_source.range 设为 A1:L400 一类能覆盖全年的区域。"
+            )
 
     extra_notes = list(config.get("insights", {}).get("extra_notes") or [])
 
