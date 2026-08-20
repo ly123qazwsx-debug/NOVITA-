@@ -67,14 +67,15 @@ def build_sample_dataframe() -> pd.DataFrame:
         for day in range(1, days + 1):
             d = date(year, month, day)
             bump = 30 if month_offset == 0 else 0
+            llm_spike = 180 if month_offset == 0 and day >= 18 else 0
             rows.append(
                 {
                     "date": d,
-                    "llm": 320 + day * 2 + bump,
+                    "llm": 320 + day * 2 + bump + llm_spike,
                     "sd": 110 + day + bump // 2,
                     "gpu_ondemand": 6 + day * 0.2,
                     "gpu_storage": 25 + day * 0.3,
-                    "gpu_fixed": 1636.61,
+                    "gpu_fixed": 1636.61 if month_offset == 0 else 1400.0,
                 }
             )
     df = pd.DataFrame(rows)
@@ -122,17 +123,25 @@ def main() -> int:
         print("正在从飞书 NOVITA 工作表拉取数据...")
         df = fetch_cost_data(client, config)
         print(f"已读取 {len(df)} 条记录，日期范围 {df['date'].min()} ~ {df['date'].max()}")
+        month_start = date.today().replace(day=1)
+        if df["date"].max() < month_start:
+            print(
+                f"警告：最新数据停在 {df['date'].max()}，未覆盖本月。"
+                "请确认 NOVITA 表已填到昨天，并把 data_source.range 设为 A1:L400 一类能覆盖全年的区域。"
+            )
+
+    extra_notes = list(config.get("insights", {}).get("extra_notes") or [])
 
     metrics = calculate_metrics(df, config)
-    charts = generate_all_charts(metrics, output_dir / "charts")
+    charts = generate_all_charts(metrics, output_dir / "charts", extra_notes)
     html_path = generate_html_report(metrics, charts, output_dir)
     md_path = output_dir / f"novita_summary_{metrics.report_date.isoformat()}.md"
-    md_path.write_text(generate_markdown_summary(metrics), encoding="utf-8")
+    md_path.write_text(generate_markdown_summary(metrics, extra_notes), encoding="utf-8")
 
     print(f"HTML 报告: {html_path}")
     print(f"Markdown 摘要: {md_path}")
     print(f"图表目录: {output_dir / 'charts'}")
-    print(generate_markdown_summary(metrics))
+    print(generate_markdown_summary(metrics, extra_notes))
 
     if args.no_push:
         print("--no-push：跳过飞书推送")
@@ -156,6 +165,7 @@ def main() -> int:
         webhook_secret=webhook_secret,
         receive_id=receive_id,
         receive_id_type=receive_id_type,
+        extra_notes=extra_notes,
     )
     return 0
 

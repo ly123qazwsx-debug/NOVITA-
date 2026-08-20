@@ -10,7 +10,7 @@ data_source:
   wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
   sheet_name: "NOVITA"
   sheet_id: "v9euzu"
-  range: "A1:L200"
+  range: "A1:L400"
 
 # 列按 NOVITA 表固定顺序解析：
 # A年 B月 C日(8月1日) D LLM  E sd  F GPU (按需)  G GPU (按需存储)  H GPU 固定
@@ -21,7 +21,11 @@ report:
   timezone: "Asia/Shanghai"
   output_dir: "output"
 
-# 飞书推送：配置 webhook 或 receive_id 后自动发送
+# 每月可改的人工备注，会写进日报「其中」
+insights:
+  extra_notes:
+    - "机器本月新加12台：5090普*3台、4090*9台"
+
 push:
   enabled: true
   webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
