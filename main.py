@@ -21,6 +21,18 @@ from src.push_feishu import push_daily_report
 from src.report import generate_html_report, generate_markdown_summary
 
 
+def load_dotenv(path: Path = Path(".env")) -> None:
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
 def load_config(path: Path) -> dict:
     with path.open(encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -74,10 +86,12 @@ def build_sample_dataframe() -> pd.DataFrame:
 def main() -> int:
     parser = argparse.ArgumentParser(description="生成 NOVITA 成本日报并推送到飞书")
     parser.add_argument("--config", default="config.yaml", help="配置文件路径")
-    parser.add_argument("--dry-run", action="store_true", help="使用示例数据，不请求飞书")
+    parser.add_argument("--dry-run", action="store_true", help="使用示例数据，不请求飞书表格")
+    parser.add_argument("--push", action="store_true", help="即使 dry-run 也推送到飞书")
     parser.add_argument("--no-push", action="store_true", help="只生成报告，不推送")
     args = parser.parse_args()
 
+    load_dotenv()
     config_path = Path(args.config)
     if not config_path.exists():
         print(f"配置文件不存在: {config_path}")
@@ -120,15 +134,18 @@ def main() -> int:
     print(f"图表目录: {output_dir / 'charts'}")
     print(generate_markdown_summary(metrics))
 
-    if args.no_push or args.dry_run:
-        print("dry-run / --no-push：跳过飞书推送")
+    if args.no_push:
+        print("--no-push：跳过飞书推送")
+        return 0
+    if args.dry_run and not args.push:
+        print("dry-run：跳过飞书推送（加 --push 可发送示例数据）")
         return 0
 
     if not has_push_target:
         print("未配置 Webhook 或 receive_id，跳过推送")
         return 0
 
-    if client is None:
+    if client is None and not _placeholder(app_id) and not _placeholder(app_secret):
         client = FeishuClient(app_id, app_secret)
 
     push_daily_report(
