@@ -1,4 +1,4 @@
-"""一张综合看板：概览 KPI + 分项趋势（对比上月）+ 环比明细。"""
+"""一张清晰的当月成本看板：KPI + 对比柱 + 双轴日趋势 + 分项表。"""
 
 from __future__ import annotations
 
@@ -13,31 +13,24 @@ from .data_fetcher import COST_COLUMNS
 from .metrics import CATEGORY_LABELS, ReportMetrics
 from .report import _fmt_money, _fmt_rate
 
-BG = "#F4F6F8"
-CARD_BG = "#FFFFFF"
+BG = "#F7F8FA"
+CARD = "#FFFFFF"
 TEXT = "#1F2329"
 MUTED = "#646A73"
-GRID = "#E5E6EB"
-UP = "#D83931"
-DOWN = "#2EA121"
-PREV = "#9AA0A6"
-ACCENT = "#3370FF"
+GRID = "#E8EAED"
+LINE = "#D0D3D8"
+UP = "#C45656"
+DOWN = "#2B8A3E"
+AUG = "#1F7A4D"
+JUL = "#B7D4C4"
+BAR_FIXED = "#2F6F4E"
 
-COLORS = {
-    "llm": "#3370FF",
-    "sd": "#F58518",
-    "gpu_ondemand": "#00B42A",
-    "gpu_storage": "#14C9C9",
-    "gpu_fixed": "#86909C",
-    "total_with_fixed": "#1D2129",
-    "total_ondemand": "#3370FF",
-}
-
-TREND_SERIES = COST_COLUMNS + ["total_with_fixed", "total_ondemand"]
-TREND_TITLES = {
-    **CATEGORY_LABELS,
-    "total_with_fixed": "日消耗-含固定GPU",
-    "total_ondemand": "日消耗-按需计费",
+# 按需项用高对比颜色，避免和固定 GPU 柱挤在一起看不清
+LINE_COLORS = {
+    "llm": "#1A7F8E",
+    "sd": "#D4A017",
+    "gpu_ondemand": "#C0392B",
+    "gpu_storage": "#3D8B5F",
 }
 
 
@@ -65,54 +58,45 @@ def _rate_color(rate: float) -> str:
 
 
 def _rate_arrow(rate: float) -> str:
-    if rate != rate:
-        return ""
-    if rate > 0:
-        return "▲"
-    if rate < 0:
-        return "▼"
-    return "–"
+    if rate != rate or rate == 0:
+        return "–"
+    return "▲" if rate > 0 else "▼"
 
 
-KPI_SHORT = {
-    "month_total": "当月总消耗",
-    "daily_with_fixed": "日消耗 · 含固定GPU",
-    "daily_ondemand": "日消耗 · 按需计费",
-    "forecast": "预计当月总消耗",
-}
+def _style_ax(ax) -> None:
+    ax.set_facecolor(CARD)
+    ax.grid(axis="y", color=GRID, linewidth=0.8, zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color(LINE)
+    ax.spines["bottom"].set_color(LINE)
+    ax.tick_params(labelsize=9, colors=MUTED)
 
 
-def _draw_kpi(ax, item: dict, symbol: str) -> None:
+def _draw_kpi(ax, item: dict, symbol: str, compare_hint: str) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.axis("off")
     ax.set_facecolor(BG)
-    card = FancyBboxPatch(
-        (0.02, 0.06),
-        0.96,
-        0.88,
-        boxstyle="round,pad=0.02,rounding_size=0.04",
-        facecolor=CARD_BG,
-        edgecolor="#DEE0E3",
-        linewidth=1,
-        transform=ax.transAxes,
-        clip_on=False,
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.03, 0.08),
+            0.94,
+            0.84,
+            boxstyle="round,pad=0.02,rounding_size=0.04",
+            facecolor=CARD,
+            edgecolor="#E2E4E8",
+            linewidth=1,
+            transform=ax.transAxes,
+            clip_on=False,
+        )
     )
-    ax.add_patch(card)
-    ax.text(
-        0.08,
-        0.78,
-        KPI_SHORT.get(item.get("key"), item["label"]),
-        fontsize=8.5,
-        color=MUTED,
-        va="center",
-        transform=ax.transAxes,
-    )
+    ax.text(0.08, 0.78, item["label"], fontsize=9.5, color=MUTED, va="center", transform=ax.transAxes)
     ax.text(
         0.08,
         0.48,
         _fmt_money(item["current"], symbol),
-        fontsize=15,
+        fontsize=17,
         fontweight="bold",
         color=TEXT,
         va="center",
@@ -121,97 +105,188 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
     rate = item["rate"]
     ax.text(
         0.08,
-        0.22,
-        f"{_rate_arrow(rate)} {_fmt_rate(rate)}   上月 {_fmt_money(item['previous'], symbol)}",
-        fontsize=8,
+        0.2,
+        f"{_rate_arrow(rate)} {_fmt_rate(rate)}  {compare_hint} {_fmt_money(item['previous'], symbol)}",
+        fontsize=8.5,
         color=_rate_color(rate),
         va="center",
         transform=ax.transAxes,
     )
 
 
-def _align_by_day(df) -> tuple[list[int], dict[str, list[float]]]:
-    if df is None or df.empty:
-        return [], {}
-    work = df.copy()
-    work["day"] = work["date"].map(lambda d: d.day)
-    work = work.drop_duplicates("day").sort_values("day")
-    series = {col: work[col].tolist() for col in TREND_SERIES if col in work.columns}
-    return work["day"].tolist(), series
+def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
+    """累计 vs 上月同期；预计全月 vs 上月全月。"""
+    _style_ax(ax)
+    cur = metrics.current_period.totals["total_with_fixed"]
+    prev = metrics.previous_period.totals["total_with_fixed"]
+    forecast = metrics.forecast_month_total
+    prev_full = metrics.prev_month_full_total
+    cur_m = metrics.current_period.end.month
+    prev_m = metrics.previous_period.end.month
+
+    xs = np.array([0, 1])
+    width = 0.34
+    bars_aug = ax.bar(xs - width / 2, [cur, forecast], width, color=AUG, label=f"{cur_m}月", zorder=2)
+    bars_jul = ax.bar(xs + width / 2, [prev, prev_full], width, color=JUL, label=f"{prev_m}月", zorder=2)
+    ax.set_xticks(xs)
+    ax.set_xticklabels(["累计消耗（截至昨日）", "预计全月 vs 上月全月"], fontsize=9.5)
+    ax.set_ylabel(f"金额 ({metrics.currency})", fontsize=9, color=MUTED)
+    ax.set_title("累计 / 预计对比", fontsize=12, color=TEXT, loc="left", pad=8, fontweight="bold")
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+
+    def _label(bars):
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                h,
+                f"${h:,.0f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=TEXT,
+            )
+
+    _label(bars_aug)
+    _label(bars_jul)
+    ymax = max(cur, prev, forecast, prev_full, 1) * 1.18
+    ax.set_ylim(0, ymax)
 
 
-def _plot_small_trend(ax, title: str, color: str, days_cur, vals_cur, days_prev, vals_prev, rate: float) -> None:
-    ax.set_facecolor(CARD_BG)
-    ax.grid(axis="y", color=GRID, linewidth=0.7)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color(GRID)
-    ax.spines["bottom"].set_color(GRID)
-    ax.tick_params(labelsize=7, colors=MUTED)
+def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
+    _style_ax(ax)
+    cur_m = metrics.current_period.end.month
+    prev_m = metrics.previous_period.end.month
+    labels = ["含固定 GPU", "按需计费"]
+    current = [
+        metrics.current_period.daily_avg["total_with_fixed"],
+        metrics.current_period.daily_avg["total_ondemand"],
+    ]
+    previous = [
+        metrics.previous_period.daily_avg["total_with_fixed"],
+        metrics.previous_period.daily_avg["total_ondemand"],
+    ]
+    x = np.arange(len(labels))
+    width = 0.34
+    b1 = ax.bar(x - width / 2, current, width, color=AUG, label=f"{cur_m}月日均", zorder=2)
+    b2 = ax.bar(x + width / 2, previous, width, color=JUL, label=f"{prev_m}月日均", zorder=2)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, fontsize=9.5)
+    ax.set_ylabel(f"金额 ({metrics.currency})", fontsize=9, color=MUTED)
+    ax.set_title("日均消耗对比", fontsize=12, color=TEXT, loc="left", pad=8, fontweight="bold")
+    ax.legend(frameon=False, fontsize=9, loc="upper right")
+    for bars in (b1, b2):
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                h,
+                f"${h:,.0f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=TEXT,
+            )
+    ax.set_ylim(0, max(current + previous + [1]) * 1.22)
 
-    if days_prev and vals_prev:
-        ax.plot(days_prev, vals_prev, color=PREV, linestyle="--", linewidth=1.4, label="上月同期")
-    if days_cur and vals_cur:
-        ax.plot(days_cur, vals_cur, color=color, linewidth=2.0, marker="o", markersize=3.2, label="当月")
-        ax.fill_between(days_cur, vals_cur, color=color, alpha=0.08)
 
-    ax.set_title(f"{title}  {_rate_arrow(rate)}{_fmt_rate(rate)}", fontsize=9, color=_rate_color(rate), pad=6, loc="left")
-    ax.set_xlabel("日", fontsize=7, color=MUTED)
-    if days_cur:
-        ax.set_xlim(min(days_cur) - 0.3, max(days_cur) + 0.3)
+def _plot_dual_axis_trend(ax, metrics: ReportMetrics) -> None:
+    """左轴：GPU 固定柱；右轴：LLM / sd / GPU按需 / 存储折线。"""
+    df = metrics.trend_df.sort_values("date").copy()
+    _style_ax(ax)
+    if df.empty:
+        ax.set_title("暂无趋势数据", loc="left")
+        return
 
+    x = np.arange(len(df))
+    labels = [f"{d.month}/{d.day}" for d in df["date"]]
 
-def _plot_mom_bars(ax, metrics: ReportMetrics) -> None:
-    """用环比率看增长（各分项量级差很大，绝对值柱状图会把按需项压扁）。"""
-    ax.set_facecolor(CARD_BG)
-    labels = [CATEGORY_LABELS[k] for k in COST_COLUMNS]
-    rates = [metrics.mom_changes[k]["rate"] for k in COST_COLUMNS]
-    plot_rates = [0.0 if r != r else r for r in rates]
-    colors = [_rate_color(r) if r == r else MUTED for r in rates]
+    bars = ax.bar(
+        x,
+        df["gpu_fixed"],
+        width=0.72,
+        color=BAR_FIXED,
+        alpha=0.88,
+        label="GPU 固定（左轴）",
+        zorder=2,
+    )
+    ax.set_ylabel("GPU 固定 (USD)", fontsize=9.5, color=BAR_FIXED)
+    ax.tick_params(axis="y", colors=BAR_FIXED)
 
-    y = np.arange(len(labels))
-    ax.barh(y, plot_rates, color=colors, height=0.55, zorder=2)
-    ax.axvline(0, color=TEXT, linewidth=0.8, zorder=3)
-    ax.set_yticks(y)
-    ax.set_yticklabels(labels, fontsize=8)
-    ax.invert_yaxis()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.grid(axis="x", color=GRID, linewidth=0.7, zorder=0)
-    ax.set_xlabel("环比率 (%)", fontsize=8, color=MUTED)
-    ax.set_title("分项环比变化（红涨绿跌，便于跨分项对比）", fontsize=10, color=TEXT, loc="left", pad=8)
-    ax.tick_params(labelsize=7, colors=MUTED)
+    ax2 = ax.twinx()
+    ax2.set_facecolor("none")
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["left"].set_visible(False)
+    ax2.spines["right"].set_color(LINE)
+    ax2.grid(False)
 
-    span = max(abs(v) for v in plot_rates) if any(plot_rates) else 1
-    ax.set_xlim(-span * 1.35, span * 1.45)
-    for i, (rate, key) in enumerate(zip(rates, COST_COLUMNS)):
-        item = metrics.mom_changes[key]
-        x = 0 if rate != rate else rate
-        ax.text(
-            x + (span * 0.04 if x >= 0 else -span * 0.04),
-            i,
-            f"{_fmt_rate(rate)}  ({_fmt_money(item['current'], metrics.currency_symbol)})",
-            va="center",
-            ha="left" if x >= 0 else "right",
-            fontsize=7.5,
-            color=_rate_color(rate),
+    line_specs = [
+        ("llm", "LLM", "o"),
+        ("sd", "sd", "s"),
+        ("gpu_ondemand", "GPU 按需", "^"),
+        ("gpu_storage", "GPU 按需存储", "D"),
+    ]
+    for key, label, marker in line_specs:
+        ax2.plot(
+            x,
+            df[key],
+            color=LINE_COLORS[key],
+            linewidth=2.3,
+            marker=marker,
+            markersize=5.2,
+            label=label,
+            zorder=3,
         )
+    ax2.set_ylabel("按需分项 (USD)", fontsize=9.5, color=MUTED)
+    ax2.tick_params(axis="y", labelsize=9, colors=MUTED)
+
+    ax.set_xticks(x)
+    step = 2 if len(x) > 12 else 1
+    ax.set_xticklabels([lab if i % step == 0 else "" for i, lab in enumerate(labels)], fontsize=8.5)
+    ax.set_xlim(-0.6, len(x) - 0.4)
+    ax.set_ylim(0, max(df["gpu_fixed"].max() * 1.18, 1))
+    ondemand_max = max(df[k].max() for k, _, _ in line_specs)
+    ax2.set_ylim(0, max(ondemand_max * 1.25, 1))
+
+    ax.set_title(
+        f"NOVITA {metrics.report_date.month}月五项成本日度趋势（柱=固定 GPU，线=按需项）",
+        fontsize=12,
+        color=TEXT,
+        loc="left",
+        pad=28,
+        fontweight="bold",
+    )
+
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(
+        h1 + h2,
+        l1 + l2,
+        frameon=False,
+        fontsize=8.5,
+        ncol=5,
+        loc="lower left",
+        bbox_to_anchor=(0.0, 1.02),
+        borderaxespad=0,
+    )
 
 
 def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     ax.axis("off")
     ax.set_facecolor(BG)
     sym = metrics.currency_symbol
-    rows = list(metrics.overview) + [
-        {"label": CATEGORY_LABELS[k], **metrics.mom_changes[k]} for k in COST_COLUMNS
-    ]
+    month_total = metrics.current_period.totals["total_with_fixed"]
+    rows = [{"key": k, "label": CATEGORY_LABELS[k], **metrics.mom_changes[k]} for k in COST_COLUMNS]
+    rows.append({"key": "total", "label": "总消耗", **metrics.mom_changes["total_with_fixed"]})
+
     cell_text = []
     cell_colors = []
     for i, item in enumerate(rows):
+        share = item["current"] / month_total * 100 if month_total else 0
+        is_total = item["key"] == "total"
+        base = "#EEF6F1" if is_total else "#FFFFFF"
         rate = item["rate"]
-        rate_bg = "#FDECEC" if rate == rate and rate > 0 else ("#E8F6E9" if rate == rate and rate < 0 else "#FFFFFF")
-        # 概览与分项之间加一点视觉分组：前 4 行浅底
-        base = "#F7F8FA" if i < 4 else "#FFFFFF"
+        rate_bg = "#F8E8E8" if rate == rate and rate > 0 else ("#E7F4EA" if rate == rate and rate < 0 else base)
         cell_text.append(
             [
                 item["label"],
@@ -219,158 +294,98 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
                 _fmt_money(item["previous"], sym),
                 _fmt_money(item["change"], sym),
                 _fmt_rate(rate),
+                f"{share:.0f}%",
             ]
         )
-        cell_colors.append([base, base, base, rate_bg, rate_bg])
+        cell_colors.append([base, base, base, rate_bg, rate_bg, base])
 
     table = ax.table(
         cellText=cell_text,
-        colLabels=["指标 / 分项", "当月数据", "上月同期", "环比", "环比率"],
+        colLabels=["计费项", "当月累计", "上月同期", "环比", "环比率", "占比"],
         loc="center",
         cellLoc="center",
-        colColours=["#E8F3FF"] * 5,
+        colColours=["#E7F2EB"] * 6,
         cellColours=cell_colors,
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(8.5)
-    table.scale(1, 1.55)
+    table.set_fontsize(9.5)
+    table.scale(1, 1.65)
     for (row, col), cell in table.get_celld().items():
-        cell.set_edgecolor("#E5E6EB")
-        cell.set_linewidth(0.6)
+        cell.set_edgecolor("#E2E5EA")
+        cell.set_linewidth(0.7)
         if row == 0:
             cell.set_text_props(fontweight="bold", color=TEXT)
         elif col == 0:
-            cell.set_text_props(ha="left")
-            cell.PAD = 0.08
+            cell.set_text_props(ha="left", fontweight="bold" if row == len(rows) else "normal")
+            cell.PAD = 0.1
         elif col == 4 and row > 0:
             rate = rows[row - 1]["rate"]
             cell.set_text_props(color=_rate_color(rate), fontweight="bold")
-    ax.set_title("环比明细（上 4 行为汇总指标，下 5 行为分项）", fontsize=10, color=TEXT, loc="left", pad=10)
+        if row == len(rows):
+            cell.set_text_props(fontweight="bold")
+    ax.set_title("分项环比明细", fontsize=12, color=TEXT, loc="left", pad=8, fontweight="bold")
 
 
 def plot_dashboard(metrics: ReportMetrics, output_dir: Path) -> Path:
-    """生成一张包含全部关键信息的综合看板。"""
     _setup_font()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    fig = plt.figure(figsize=(18.5, 13.2), facecolor=BG)
+    p = metrics.current_period
+    fig = plt.figure(figsize=(18.2, 13.6), facecolor=BG)
     outer = GridSpec(
         4,
         1,
-        height_ratios=[1.05, 2.15, 2.25, 2.55],
-        hspace=0.28,
-        top=0.91,
-        bottom=0.03,
-        left=0.045,
-        right=0.975,
+        height_ratios=[1.12, 2.15, 3.35, 2.15],
+        hspace=0.32,
+        top=0.90,
+        bottom=0.035,
+        left=0.05,
+        right=0.96,
     )
 
-    period = metrics.current_period
     fig.suptitle(
-        f"NOVITA 成本日报  {metrics.report_date}    单位 {metrics.currency}",
-        fontsize=18,
+        f"NOVITA {p.end.month}月成本数据概览",
+        fontsize=22,
         fontweight="bold",
         color=TEXT,
-        x=0.045,
+        x=0.05,
         ha="left",
         y=0.975,
     )
     fig.text(
-        0.045,
-        0.935,
-        f"统计区间 {period.start.month}.{period.start.day}–{period.end.month}.{period.end.day}"
-        f"（已过 {period.days} 天）  ｜  实线=当月  虚线=上月同期  ｜  红涨绿跌",
-        fontsize=10,
+        0.05,
+        0.938,
+        f"统计区间 {p.start.month}月{p.start.day}日 – {p.end.month}月{p.end.day}日"
+        f"（截至昨日，共 {p.days} 天）  ｜  单位 {metrics.currency}  ｜  红涨绿跌",
+        fontsize=11,
         color=MUTED,
         ha="left",
     )
 
-    gs_kpi = outer[0].subgridspec(1, 4, wspace=0.06)
+    hints = {
+        "month_total": "上月同期",
+        "daily_with_fixed": "上月同期",
+        "daily_ondemand": "上月同期",
+        "forecast": "上月全月",
+    }
+    gs_kpi = outer[0].subgridspec(1, 4, wspace=0.07)
     for i, item in enumerate(metrics.overview):
         ax = fig.add_subplot(gs_kpi[0, i])
-        _draw_kpi(ax, item, metrics.currency_symbol)
+        _draw_kpi(ax, item, metrics.currency_symbol, hints.get(item["key"], "上月同期"))
 
-    days_cur, cur_series = _align_by_day(metrics.trend_df)
-    days_prev, prev_series = _align_by_day(metrics.prev_trend_df)
+    gs_mid = outer[1].subgridspec(1, 2, wspace=0.16)
+    _plot_total_compare(fig.add_subplot(gs_mid[0, 0]), metrics)
+    _plot_daily_compare(fig.add_subplot(gs_mid[0, 1]), metrics)
 
-    gs_trend = outer[1].subgridspec(1, 5, wspace=0.18)
-    for i, col in enumerate(COST_COLUMNS):
-        ax = fig.add_subplot(gs_trend[0, i])
-        rate = metrics.mom_changes[col]["rate"]
-        _plot_small_trend(
-            ax,
-            CATEGORY_LABELS[col],
-            COLORS[col],
-            days_cur,
-            cur_series.get(col, []),
-            days_prev,
-            prev_series.get(col, []),
-            rate,
-        )
-        if i == 0:
-            ax.legend(frameon=False, fontsize=7, loc="upper left")
-
-    gs_mid = outer[2].subgridspec(1, 2, width_ratios=[1.15, 1], wspace=0.16)
-    ax_total = fig.add_subplot(gs_mid[0, 0])
-    ax_total.set_facecolor(CARD_BG)
-    if days_prev:
-        ax_total.plot(
-            days_prev,
-            prev_series.get("total_with_fixed", []),
-            color=PREV,
-            linestyle="--",
-            linewidth=1.4,
-            label="上月总消耗",
-        )
-        ax_total.plot(
-            days_prev,
-            prev_series.get("total_ondemand", []),
-            color="#C9CDD4",
-            linestyle="--",
-            linewidth=1.3,
-            label="上月按需",
-        )
-    if days_cur:
-        ax_total.plot(
-            days_cur,
-            cur_series.get("total_with_fixed", []),
-            color=COLORS["total_with_fixed"],
-            linewidth=2.2,
-            marker="o",
-            markersize=3.5,
-            label="当月总消耗（含固定）",
-        )
-        ax_total.plot(
-            days_cur,
-            cur_series.get("total_ondemand", []),
-            color=COLORS["total_ondemand"],
-            linewidth=2.2,
-            marker="s",
-            markersize=3.5,
-            label="当月按需计费",
-        )
-    ax_total.set_title("每日总消耗变化（含固定 vs 按需）", fontsize=10, color=TEXT, loc="left", pad=8)
-    ax_total.set_xlabel("日", fontsize=8, color=MUTED)
-    ax_total.set_ylabel(f"金额 ({metrics.currency})", fontsize=8, color=MUTED)
-    ax_total.grid(axis="y", color=GRID, linewidth=0.7)
-    ax_total.spines["top"].set_visible(False)
-    ax_total.spines["right"].set_visible(False)
-    ax_total.legend(frameon=False, fontsize=7.5, ncol=2, loc="upper left")
-    ax_total.tick_params(labelsize=7, colors=MUTED)
-
-    ax_bars = fig.add_subplot(gs_mid[0, 1])
-    _plot_mom_bars(ax_bars, metrics)
-
-    ax_table = fig.add_subplot(outer[3])
-    _plot_detail_table(ax_table, metrics)
+    _plot_dual_axis_trend(fig.add_subplot(outer[2]), metrics)
+    _plot_detail_table(fig.add_subplot(outer[3]), metrics)
 
     path = output_dir / "novita_dashboard.png"
-    fig.savefig(path, dpi=160, facecolor=fig.get_facecolor())
+    fig.savefig(path, dpi=170, facecolor=fig.get_facecolor())
     plt.close(fig)
     return path
 
 
 def generate_all_charts(metrics: ReportMetrics, output_dir: Path) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    dashboard = plot_dashboard(metrics, output_dir)
-    return {"dashboard": dashboard}
+    return {"dashboard": plot_dashboard(metrics, output_dir)}

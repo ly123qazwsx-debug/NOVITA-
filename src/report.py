@@ -54,8 +54,8 @@ HTML_TEMPLATE = Template(
   </style>
 </head>
 <body>
-  <h1>NOVITA 成本日报</h1>
-  <div class="subtitle">报告日期：{{ report_date }} ｜ 统计区间：{{ period_start }} ~ {{ period_end }} ｜ 币种：{{ currency }}</div>
+  <h1>NOVITA {{ month }}月成本数据概览</h1>
+  <div class="subtitle">统计区间：{{ period_start }} ~ {{ period_end }}（截至昨日）｜ 币种：{{ currency }}</div>
 
   <h2>当月数据概览</h2>
   <table>
@@ -151,6 +151,7 @@ def build_report_context(metrics: ReportMetrics, charts: dict[str, Path]) -> dic
 
     return {
         "report_date": metrics.report_date.isoformat(),
+        "month": metrics.current_period.end.month,
         "period_start": metrics.current_period.start.isoformat(),
         "period_end": metrics.current_period.end.isoformat(),
         "currency": metrics.currency,
@@ -173,8 +174,8 @@ def generate_html_report(metrics: ReportMetrics, charts: dict[str, Path], output
 def generate_markdown_summary(metrics: ReportMetrics) -> str:
     sym = metrics.currency_symbol
     lines = [
-        f"📊 NOVITA 成本日报 | {metrics.report_date}",
-        f"统计区间：{metrics.current_period.start} ~ {metrics.current_period.end}（{metrics.current_period.days} 天）｜单位：{metrics.currency}",
+        f"📊 NOVITA {metrics.current_period.end.month}月成本概览 | 截至 {metrics.report_date}",
+        f"统计区间：{metrics.current_period.start} ~ {metrics.current_period.end}（截至昨日，共 {metrics.current_period.days} 天）｜单位：{metrics.currency}",
         "",
         "【当月数据概览】",
         "指标 | 当月数据 | 上月同期 | 环比 | 环比率",

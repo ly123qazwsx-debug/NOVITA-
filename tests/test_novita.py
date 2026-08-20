@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
+import pandas as pd
+
 from src.data_fetcher import parse_novita_rows
 from src.metrics import calculate_metrics
 
@@ -37,15 +39,34 @@ def test_metrics_match_sheet_overview_logic():
     df = parse_novita_rows(SAMPLE_ROWS)
     config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
     metrics = calculate_metrics(df, config)
+    # 今天 8.20 → 统计到 8.19
     assert metrics.report_date == date(2026, 8, 19)
+    assert metrics.current_period.start == date(2026, 8, 1)
+    assert metrics.current_period.end == date(2026, 8, 19)
     assert metrics.current_period.days == 19
-    month_total = df.loc[df["date"] >= date(2026, 8, 1), "total_with_fixed"].sum()
+    month_total = df.loc[
+        (df["date"] >= date(2026, 8, 1)) & (df["date"] <= date(2026, 8, 19)),
+        "total_with_fixed",
+    ].sum()
     assert abs(metrics.current_period.totals["total_with_fixed"] - month_total) < 1e-6
     overview_keys = [row["key"] for row in metrics.overview]
     assert overview_keys == ["month_total", "daily_with_fixed", "daily_ondemand", "forecast"]
     daily = next(r for r in metrics.overview if r["key"] == "daily_with_fixed")
     assert abs(daily["current"] - month_total / 19) < 1e-6
     assert not metrics.prev_trend_df.empty
+
+
+def test_metrics_exclude_today_even_if_present():
+    df = parse_novita_rows(SAMPLE_ROWS)
+    extra = df.iloc[[-1]].copy()
+    extra["date"] = date(2026, 8, 20)
+    extra["llm"] = 9999
+    df = pd.concat([df, extra], ignore_index=True)
+    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
+    metrics = calculate_metrics(df, config)
+    assert metrics.report_date == date(2026, 8, 19)
+    assert metrics.current_period.end == date(2026, 8, 19)
+    assert 9999 not in set(metrics.trend_df["llm"])
 
 
 def test_dashboard_generates_one_image():
