@@ -10,6 +10,7 @@ from matplotlib.gridspec import GridSpec
 from matplotlib.patches import FancyBboxPatch
 
 from .data_fetcher import COST_COLUMNS
+from .insights import build_highlights
 from .metrics import CATEGORY_LABELS, ReportMetrics
 from .report import _fmt_money, _fmt_rate
 
@@ -326,19 +327,46 @@ def _plot_detail_table(ax, metrics: ReportMetrics) -> None:
     ax.set_title("分项环比明细", fontsize=12, color=TEXT, loc="left", pad=8, fontweight="bold")
 
 
-def plot_dashboard(metrics: ReportMetrics, output_dir: Path) -> Path:
+def _draw_insights(ax, lines: list[str]) -> None:
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    ax.set_facecolor(BG)
+    ax.add_patch(
+        FancyBboxPatch(
+            (0.02, 0.08),
+            0.96,
+            0.84,
+            boxstyle="round,pad=0.02,rounding_size=0.03",
+            facecolor="#F3F8F5",
+            edgecolor="#CDE0D4",
+            linewidth=1,
+            transform=ax.transAxes,
+            clip_on=False,
+        )
+    )
+    ax.text(0.04, 0.78, "其中", fontsize=12, fontweight="bold", color=TEXT, va="center", transform=ax.transAxes)
+    body = "\n".join(f"{i}、{line}" for i, line in enumerate(lines, start=1)) or "暂无"
+    ax.text(0.04, 0.62, body, fontsize=10, color=TEXT, va="top", ha="left", transform=ax.transAxes)
+
+
+def plot_dashboard(
+    metrics: ReportMetrics,
+    output_dir: Path,
+    extra_notes: list[str] | None = None,
+) -> Path:
     _setup_font()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     p = metrics.current_period
-    fig = plt.figure(figsize=(18.2, 13.6), facecolor=BG)
+    fig = plt.figure(figsize=(18.2, 15.0), facecolor=BG)
     outer = GridSpec(
-        4,
+        5,
         1,
-        height_ratios=[1.12, 2.15, 3.35, 2.15],
-        hspace=0.32,
-        top=0.90,
-        bottom=0.035,
+        height_ratios=[1.05, 2.05, 3.2, 1.95, 1.15],
+        hspace=0.30,
+        top=0.91,
+        bottom=0.03,
         left=0.05,
         right=0.96,
     )
@@ -379,6 +407,7 @@ def plot_dashboard(metrics: ReportMetrics, output_dir: Path) -> Path:
 
     _plot_dual_axis_trend(fig.add_subplot(outer[2]), metrics)
     _plot_detail_table(fig.add_subplot(outer[3]), metrics)
+    _draw_insights(fig.add_subplot(outer[4]), build_highlights(metrics, extra_notes))
 
     path = output_dir / "novita_dashboard.png"
     fig.savefig(path, dpi=170, facecolor=fig.get_facecolor())
@@ -386,6 +415,10 @@ def plot_dashboard(metrics: ReportMetrics, output_dir: Path) -> Path:
     return path
 
 
-def generate_all_charts(metrics: ReportMetrics, output_dir: Path) -> dict[str, Path]:
+def generate_all_charts(
+    metrics: ReportMetrics,
+    output_dir: Path,
+    extra_notes: list[str] | None = None,
+) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    return {"dashboard": plot_dashboard(metrics, output_dir)}
+    return {"dashboard": plot_dashboard(metrics, output_dir, extra_notes)}

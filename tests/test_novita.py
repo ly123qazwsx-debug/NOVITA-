@@ -79,7 +79,63 @@ def test_dashboard_generates_one_image():
     config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
     metrics = calculate_metrics(df, config)
     with tempfile.TemporaryDirectory() as td:
-        charts = generate_all_charts(metrics, Path(td))
+        charts = generate_all_charts(metrics, Path(td), ["机器本月新加12台：5090普*3台、4090*9台"])
         assert list(charts) == ["dashboard"]
         assert charts["dashboard"].exists()
         assert charts["dashboard"].stat().st_size > 20_000
+
+
+def _mtd_frame() -> pd.DataFrame:
+    """7.1-7.19 / 8.1-8.19，LLM 在 8.18、8.19 抬升，GPU 固定本月上涨。"""
+    rows = []
+    for day in range(1, 20):
+        rows.append(
+            {
+                "date": date(2026, 7, day),
+                "llm": 300,
+                "sd": 100,
+                "gpu_ondemand": 5,
+                "gpu_storage": 20,
+                "gpu_fixed": 1400,
+            }
+        )
+        llm = 520 if day >= 18 else 330
+        rows.append(
+            {
+                "date": date(2026, 8, day),
+                "llm": llm,
+                "sd": 110,
+                "gpu_ondemand": 6,
+                "gpu_storage": 25,
+                "gpu_fixed": 1636.61,
+            }
+        )
+    df = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+    df["total_with_fixed"] = df[["llm", "sd", "gpu_ondemand", "gpu_storage", "gpu_fixed"]].sum(axis=1)
+    df["total_ondemand"] = df[["llm", "sd", "gpu_ondemand", "gpu_storage"]].sum(axis=1)
+    return df
+
+
+def test_daily_brief_matches_business_template():
+    from src.insights import detect_recent_spikes, format_daily_brief, mom_cn
+
+    assert mom_cn(22.1) == "环比上涨22%"
+    assert mom_cn(-13.6) == "环比下降14%"
+    assert mom_cn(0) == "环比持平"
+
+    config = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
+    metrics = calculate_metrics(_mtd_frame(), config)
+    note = "机器本月新加12台：5090普*3台、4090*9台"
+    brief = format_daily_brief(metrics, [note])
+
+    assert brief.startswith("NOVITA（截止到8月19号）：")
+    assert "1、当月总消耗（8.1-8.19）——" in brief
+    assert "2、日消耗-含固定GPU——" in brief
+    assert "3、日消耗-按需(LLM/SD/GPU按需/存储）——" in brief
+    assert "4、预计8月总消耗——" in brief
+    assert "环比上涨" in brief
+    assert "其中：" in brief
+    assert f"以LLM、机器上涨比较明显（{note}）" in brief
+    assert "LLM18号、19号消耗增长较大，辛苦查看一下异常" in brief
+    spikes = detect_recent_spikes(metrics)
+    assert any("LLM18号、19号" in s for s in spikes)
