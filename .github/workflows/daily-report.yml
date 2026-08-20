@@ -5,6 +5,13 @@ on:
     # 每天北京时间 11:10 = UTC 03:10
     - cron: "10 3 * * *"
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: "手动重跑最新看板。Branch 选 main，然后点绿色 Run workflow"
+        type: choice
+        default: "yes"
+        options:
+          - "yes"
 
 jobs:
   report:
