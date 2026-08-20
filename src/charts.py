@@ -410,8 +410,22 @@ def plot_dashboard(
     _draw_insights(fig.add_subplot(outer[4]), build_highlights(metrics, extra_notes))
 
     path = output_dir / "novita_dashboard.png"
-    fig.savefig(path, dpi=170, facecolor=fig.get_facecolor())
+    fig.savefig(path, dpi=140, facecolor=BG, edgecolor="none")
     plt.close(fig)
+    return _flatten_png_to_rgb(path)
+
+
+def _flatten_png_to_rgb(path: Path) -> Path:
+    """飞书上传不认 RGBA 透明 PNG，压成不透明 RGB。"""
+    from PIL import Image
+
+    im = Image.open(path)
+    if im.mode == "RGB":
+        return path
+    bg = Image.new("RGB", im.size, (247, 248, 250))
+    rgba = im.convert("RGBA")
+    bg.paste(rgba, mask=rgba.split()[-1])
+    bg.save(path, "PNG", optimize=True)
     return path
 
 

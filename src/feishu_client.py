@@ -3,9 +3,30 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
+
+
+IMAGE_UPLOAD_HINTS = {
+    234001: "请求参数无效（已按飞书文档带上文件名和 MIME 重试）。",
+    234007: "应用未启用机器人能力。打开 https://open.feishu.cn/app → 应用能力 → 添加「机器人」→ 创建版本并发布。",
+    234011: "飞书无法识别图片格式。",
+    234006: "图片超过 10MB。",
+    99991663: "应用缺少 im:resource 权限，请开通「获取与上传图片或文件资源」后发布。",
+    99991672: "应用缺少 im:resource 权限，请开通「获取与上传图片或文件资源」后发布。",
+}
+
+
+def _explain_image_upload_error(http_status: int, data: dict[str, Any]) -> str:
+    code = data.get("code")
+    msg = data.get("msg") or data.get("message") or ""
+    hint = IMAGE_UPLOAD_HINTS.get(code, "")
+    parts = [f"HTTP {http_status}", f"code={code}", f"msg={msg}"]
+    if hint:
+        parts.append(hint)
+    return "；".join(parts)
 
 
 class FeishuClient:
@@ -93,20 +114,39 @@ class FeishuClient:
             raise RuntimeError(f"Webhook 推送失败: {data}")
 
     def upload_image(self, image_path: str) -> str:
-        """上传图片，返回 image_key。"""
-        with open(image_path, "rb") as f:
-            resp = requests.post(
-                f"{self.base_url}/im/v1/images",
-                headers=self._headers(),
-                files={"image": f},
-                data={"image_type": "message"},
-                timeout=60,
-            )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("code") != 0:
-            raise RuntimeError(f"上传图片失败: {data}")
-        return data["data"]["image_key"]
+        """上传图片，返回 image_key。失败时带上飞书原始错误，便于排查。"""
+        from PIL import Image
+
+        src = Path(image_path)
+        if not src.exists() or src.stat().st_size == 0:
+            raise RuntimeError(f"图表文件不存在或为空: {image_path}")
+
+        jpeg_path = src.with_name(src.stem + "_feishu.jpg")
+        Image.open(src).convert("RGB").save(jpeg_path, "JPEG", quality=85, optimize=True)
+        candidates = [jpeg_path, src]
+        last_error = ""
+
+        for path in candidates:
+            mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
+            with path.open("rb") as f:
+                resp = requests.post(
+                    f"{self.base_url}/im/v1/images",
+                    headers=self._headers(),
+                    files={"image": (path.name, f, mime)},
+                    data={"image_type": "message"},
+                    timeout=60,
+                )
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {"code": -1, "msg": resp.text[:400]}
+            if resp.ok and data.get("code") == 0:
+                print(f"已上传图表 {path.name} -> {data['data']['image_key']}")
+                return data["data"]["image_key"]
+            last_error = _explain_image_upload_error(resp.status_code, data)
+            print(f"上传 {path.name} 失败: {last_error}")
+
+        raise RuntimeError(last_error)
 
     def send_app_message(
         self,
