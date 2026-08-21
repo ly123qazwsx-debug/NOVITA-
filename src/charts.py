@@ -239,14 +239,14 @@ def _draw_kpi(ax, item: dict, symbol: str) -> None:
 def _plot_total_compare(ax, metrics: ReportMetrics) -> None:
     _style_ax(ax)
     _money_axis(ax)
-    cur = metrics.current_period.totals["total_with_fixed"]
-    prev = metrics.previous_period.totals["total_with_fixed"]
-    forecast = metrics.forecast_month_total
-    prev_full = metrics.prev_month_full_total
-    cur_m = metrics.current_period.end.month
-    prev_m = metrics.previous_period.end.month
     month_item = next(r for r in metrics.overview if r["key"] == "month_total")
     forecast_item = next(r for r in metrics.overview if r["key"] == "forecast")
+    cur = month_item["current"]
+    prev = month_item["previous"]
+    forecast = forecast_item["current"]
+    prev_full = forecast_item["previous"]
+    cur_m = metrics.current_period.end.month
+    prev_m = metrics.previous_period.end.month
 
     xs = np.array([0, 1])
     width = 0.38
@@ -296,17 +296,11 @@ def _plot_daily_compare(ax, metrics: ReportMetrics) -> None:
     _money_axis(ax)
     cur_m = metrics.current_period.end.month
     prev_m = metrics.previous_period.end.month
-    labels = ["含固定GPU", "按需计费"]
-    current = [
-        metrics.current_period.daily_avg["total_with_fixed"],
-        metrics.current_period.daily_avg["total_ondemand"],
-    ]
-    previous = [
-        metrics.previous_period.daily_avg["total_with_fixed"],
-        metrics.previous_period.daily_avg["total_ondemand"],
-    ]
+    labels = ["含固定GPU", "按需(LLM/SD/GPU按需/存储)"]
     fixed_item = next(r for r in metrics.overview if r["key"] == "daily_with_fixed")
     ondemand_item = next(r for r in metrics.overview if r["key"] == "daily_ondemand")
+    current = [fixed_item["current"], ondemand_item["current"]]
+    previous = [fixed_item["previous"], ondemand_item["previous"]]
     x = np.arange(len(labels))
     width = 0.38
     b1 = ax.bar(x - width / 2, current, width, color=AUG, label=f"{cur_m}月", zorder=3)
@@ -637,7 +631,8 @@ def plot_dashboard(
     right_bits = []
     if metrics.sheet_actual:
         right_bits.append(f"实际 {_fmt_amt(metrics.sheet_actual)}")
-    if getattr(metrics, "mom_source", "daily") == "sheet_footer":
+        right_bits.append("已剔除异常消耗")
+    elif getattr(metrics, "mom_source", "daily") == "sheet_footer":
         right_bits.append("已剔除异常消耗")
     if right_bits:
         title_ax.text(

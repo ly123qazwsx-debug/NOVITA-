@@ -166,6 +166,7 @@ def parse_novita_rows(raw_rows: list[list[Any]]) -> pd.DataFrame:
     df["total_ondemand"] = df[["llm", "sd", "gpu_ondemand", "gpu_storage"]].sum(axis=1)
     df.attrs["sheet_mom"] = parse_sheet_mom_summary(raw_rows)
     df.attrs["sheet_overrides"] = parse_sheet_overrides(raw_rows)
+    df.attrs["sheet_overview"] = parse_sheet_overview_table(raw_rows)
     return df
 
 
@@ -180,7 +181,7 @@ def fetch_cost_data(client: FeishuClient, config: dict[str, Any]) -> pd.DataFram
     if not sheet_id:
         raise ValueError("请在 config 中配置 sheet_id 或 sheet_name")
 
-    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:R400")
+    raw_rows = client.read_sheet_values(spreadsheet_token, sheet_id, ds.get("range") or "A1:Z400")
     df = parse_novita_rows(raw_rows)
     return df
 
@@ -273,6 +274,65 @@ def parse_sheet_mom_summary(raw_rows: list[list[Any]]) -> dict[int, dict[str, di
     return result
 
 
+ACTUAL_RE = re.compile(r"实际[^0-9]*([\d,]+(?:\.\d+)?)")
+
+
+def _overview_row_key(label: str) -> str | None:
+    text = label.replace(" ", "").replace("　", "")
+    if "预计" in text and "消耗" in text:
+        return "forecast"
+    if "当月总消耗" in text:
+        return "month_total"
+    if "日消耗" in text and "含固定" in text:
+        return "daily_with_fixed"
+    if "日消耗" in text and "按需" in text:
+        return "daily_ondemand"
+    return None
+
+
+def _overview_numbers(row: list[Any], start: int) -> list[float]:
+    """标签后依次取当期、上月、环比、环比率。"""
+    values: list[float] = []
+    for cell in row[start + 1 :]:
+        text = _norm(cell)
+        if text == "":
+            continue
+        if "%" in text or "％" in text:
+            values.append(_parse_pct(cell))
+        else:
+            values.append(_parse_amount(cell))
+        if len(values) >= 4:
+            break
+    return values
+
+
+def parse_sheet_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str, float]]:
+    """读取飞书表里的 NOVITA 对比表：8月 / 7月 / 环比 / 环比率。第一个板块用这里的 7 月数，不自行加总。"""
+    result: dict[str, dict[str, float]] = {}
+    if not raw_rows:
+        return result
+    for row in raw_rows:
+        if not row:
+            continue
+        for i, cell in enumerate(row):
+            key = _overview_row_key(_norm(cell))
+            if not key:
+                continue
+            nums = _overview_numbers(row, i)
+            if len(nums) < 3:
+                continue
+            current, previous, change = nums[0], nums[1], nums[2]
+            rate = nums[3] if len(nums) > 3 else float("nan")
+            result[key] = {
+                "current": current,
+                "previous": previous,
+                "change": change,
+                "rate": rate,
+            }
+            break
+    return result
+
+
 def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
     """读取表内「预计 / 实际」汇总，优先用表上的预计全月，而不是简单按日线性外推。"""
     overrides: dict[str, float] = {}
@@ -283,6 +343,12 @@ def parse_sheet_overrides(raw_rows: list[list[Any]]) -> dict[str, float]:
             label = _norm(cell).replace(" ", "").replace("　", "")
             if not label:
                 continue
+            same_cell = ACTUAL_RE.search(label)
+            if same_cell and ("剔除" in label or "$" in _norm(cell) or "消耗" in label):
+                try:
+                    overrides.setdefault("actual", float(same_cell.group(1).replace(",", "")))
+                except ValueError:
+                    pass
             amount = _first_amount_after(row, i)
             if amount is None:
                 continue

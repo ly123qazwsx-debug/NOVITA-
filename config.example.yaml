@@ -10,7 +10,7 @@ data_source:
   wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
   sheet_name: "NOVITA"
   sheet_id: "v9euzu"
-  range: "A1:R400"
+    range: "A1:Z400"
 
 # 列按 NOVITA 表固定顺序解析：
 # A年 B月 C日(8月1日) D LLM  E sd  F GPU (按需)  G GPU (按需存储)  H GPU 固定

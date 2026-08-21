@@ -117,6 +117,40 @@ def test_mom_uses_august_footer_not_july_sd_anomaly():
     assert metrics.mom_changes["sd"]["previous"] < 5000
 
 
+def test_overview_uses_feishu_july_table():
+    """第一个板块用飞书对比表里的 7 月数，不用逐日加总。"""
+    from src.data_fetcher import parse_sheet_overview_table, parse_sheet_overrides
+
+    rows = SAMPLE_ROWS + [
+        ["NOVITA", "8月（截止8月20号）", "7月", "环比", "环比率"],
+        ["当月总消耗（8.1-8.20）", 43829.99, 39081.35, 4748.64, "12%"],
+        ["日消耗-含固定GPU", 2191.50, 1954.07, 237.43, "12%"],
+        ["日消耗-按需(LLM/SD/GPU按需/存储）", 521.72, 490.23, 31.49, "6%"],
+        ["预计8月总消耗", 59552.27, 58026.69, 1525.58, "3%"],
+        ["实际$60,910.12，已剔除异常消耗"],
+    ]
+    parsed = parse_sheet_overview_table(rows)
+    assert abs(parsed["month_total"]["previous"] - 39081.35) < 1e-6
+    assert abs(parsed["forecast"]["previous"] - 58026.69) < 1e-6
+    assert int(round(parsed["forecast"]["rate"])) == 3
+    assert parse_sheet_overrides(rows)["actual"] == 60910.12
+
+    df = parse_novita_rows(rows)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+    assert metrics.overview_source == "sheet_table"
+    month_total = next(r for r in metrics.overview if r["key"] == "month_total")
+    forecast = next(r for r in metrics.overview if r["key"] == "forecast")
+    assert abs(month_total["current"] - 43829.99) < 1e-6
+    assert abs(month_total["previous"] - 39081.35) < 1e-6
+    assert int(round(month_total["rate"])) == 12
+    assert abs(forecast["current"] - 59552.27) < 1e-6
+    assert abs(forecast["previous"] - 58026.69) < 1e-6
+    assert int(round(forecast["rate"])) == 3
+    assert abs(metrics.sheet_actual - 60910.12) < 1e-6
+    # 7 月对比不能用逐日加总（SAMPLE 里 7 月只有两天）
+    assert abs(forecast["previous"] - 58026.69) < 1e-6
+
+
 def test_parse_sheet_forecast_override():
     from src.data_fetcher import parse_sheet_overrides
 
