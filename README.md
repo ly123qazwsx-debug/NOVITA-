@@ -9,6 +9,24 @@
 1. 每天 **11:00 前** 把截至昨日的基础数据填进 NOVITA 表
 2. **11:10** 自动收到一张当月看板（例如今天 8 月 20 日，统计 8 月 1 日～8 月 19 日）
 
+## 现在立刻重跑一次（入口在这里）
+
+不要打开某一次运行记录，那里只有 **Re-run jobs**，会继续用旧代码。
+
+**直接打开这个页面：**
+
+https://github.com/ly123qazwsx-debug/NOVITA-/actions/workflows/daily-report.yml
+
+然后：
+
+1. 先登录 GitHub（账号要是仓库主人 `ly123qazwsx-debug`）
+2. 页面**右侧**有按钮 **Run workflow**
+3. 点开后 Branch 选 **`main`**
+4. 再点绿色的 **Run workflow**
+5. 等 1～2 分钟，去飞书群看**最新一条**消息
+
+如果这个页面右侧没有 **Run workflow**：说明当前打开的是运行记录，或没登录成仓库主人。请用上面的链接重新打开，不要从飞书/聊天记录里的旧任务点进去。
+
 ## 日报文字模版
 
 飞书正文按下面格式输出（数字每天按表重算，环比为整数百分比）：
@@ -78,7 +96,7 @@ NOVITA（截止到8月19号）：
 | `FEISHU_APP_SECRET` | 是 | 飞书应用 App Secret |
 | `FEISHU_WEBHOOK_URL` | 是 | 群机器人 Webhook |
 
-配置完成后，可在 Actions 里手动点一次 **NOVITA Daily Cost Report → Run workflow** 验证。之后每天 11:10 自动跑。
+配置完成后，打开 [手动运行入口](https://github.com/ly123qazwsx-debug/NOVITA-/actions/workflows/daily-report.yml)，右侧点 **Run workflow**，Branch 选 `main`。之后每天 11:10 自动跑。
 
 ## 群里只有文字、没有图？
 
