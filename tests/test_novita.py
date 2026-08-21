@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from src.data_fetcher import parse_novita_rows
 from src.metrics import calculate_metrics
@@ -25,6 +27,14 @@ SAMPLE_ROWS = [
 
 TEST_CONFIG = {"report": {"timezone": "Asia/Shanghai", "currency": "USD", "currency_symbol": "$"}}
 AS_OF = date(2026, 8, 19)
+
+
+def test_example_config_is_valid_yaml():
+    path = Path(__file__).resolve().parents[1] / "config.example.yaml"
+    with path.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["data_source"]["sheet_name"] == "NOVITA"
+    assert cfg["data_source"]["range"] == "A1:Z400"
 
 
 def test_parse_skips_summary_and_handles_cn_dates():
