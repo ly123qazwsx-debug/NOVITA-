@@ -53,6 +53,7 @@ class ReportMetrics:
     sheet_actual: float | None = None
     forecast_source: str = "linear"
     mom_source: str = "daily"
+    overview_source: str = "computed"
 
 
 def _month_start(d: date) -> date:
@@ -192,33 +193,67 @@ def calculate_metrics(
         mom_changes[key] = _item_from_parts(cur_totals[key], prev_totals[key], change, rate)
 
     period_label = f"{cur_start.month}.{cur_start.day}-{cur_end.month}.{cur_end.day}"
-    overview = [
-        {
-            "key": "month_total",
-            "label": f"当月总消耗 ({period_label})",
-            **_item_from_parts(
-                cur_totals["total_with_fixed"],
-                prev_totals["total_with_fixed"],
-                (footer.get("change") or {}).get("total_with_fixed"),
-                (footer.get("rate") or {}).get("total_with_fixed"),
-            ),
-        },
-        {
-            "key": "daily_with_fixed",
-            "label": "日消耗-含固定GPU",
-            **_item_from_parts(current_period.daily_avg["total_with_fixed"], previous_period.daily_avg["total_with_fixed"]),
-        },
-        {
-            "key": "daily_ondemand",
-            "label": "日消耗-按需(LLM/SD/GPU按需/存储)",
-            **_item_from_parts(current_period.daily_avg["total_ondemand"], previous_period.daily_avg["total_ondemand"]),
-        },
-        {
-            "key": "forecast",
-            "label": f"预计{report_date.month}月总消耗",
-            **_item_from_parts(forecast, prev_month_full_total),
-        },
-    ]
+    overview_source = "computed"
+    sheet_overview = (getattr(df, "attrs", {}) or {}).get("sheet_overview") or {}
+    overview_labels = {
+        "month_total": f"当月总消耗 ({period_label})",
+        "daily_with_fixed": "日消耗-含固定GPU",
+        "daily_ondemand": "日消耗-按需(LLM/SD/GPU按需/存储）",
+        "forecast": f"预计{report_date.month}月总消耗",
+    }
+    if all(k in sheet_overview for k in OVERVIEW_KEYS):
+        overview_source = "sheet_table"
+        overview = [
+            {
+                "key": key,
+                "label": overview_labels[key],
+                **_item_from_parts(
+                    sheet_overview[key]["current"],
+                    sheet_overview[key]["previous"],
+                    sheet_overview[key].get("change"),
+                    sheet_overview[key].get("rate"),
+                ),
+            }
+            for key in OVERVIEW_KEYS
+        ]
+        forecast = sheet_overview["forecast"]["current"]
+        forecast_source = "sheet"
+        prev_month_full_total = sheet_overview["forecast"]["previous"]
+        prev_forecast = sheet_overview["forecast"]["previous"]
+    else:
+        overview = [
+            {
+                "key": "month_total",
+                "label": overview_labels["month_total"],
+                **_item_from_parts(
+                    cur_totals["total_with_fixed"],
+                    prev_totals["total_with_fixed"],
+                    (footer.get("change") or {}).get("total_with_fixed"),
+                    (footer.get("rate") or {}).get("total_with_fixed"),
+                ),
+            },
+            {
+                "key": "daily_with_fixed",
+                "label": overview_labels["daily_with_fixed"],
+                **_item_from_parts(
+                    current_period.daily_avg["total_with_fixed"],
+                    previous_period.daily_avg["total_with_fixed"],
+                ),
+            },
+            {
+                "key": "daily_ondemand",
+                "label": overview_labels["daily_ondemand"],
+                **_item_from_parts(
+                    current_period.daily_avg["total_ondemand"],
+                    previous_period.daily_avg["total_ondemand"],
+                ),
+            },
+            {
+                "key": "forecast",
+                "label": overview_labels["forecast"],
+                **_item_from_parts(forecast, prev_month_full_total),
+            },
+        ]
 
     trend_df = _reindex_days(df, cur_start, cur_end)
     prev_trend_df = df[(df["date"] >= prev_start) & (df["date"] <= prev_end)].copy()
@@ -241,6 +276,7 @@ def calculate_metrics(
         sheet_actual=sheet_actual,
         forecast_source=forecast_source,
         mom_source=mom_source,
+        overview_source=overview_source,
     )
 
 
