@@ -2,7 +2,7 @@ name: NOVITA Daily Cost Report
 
 on:
   schedule:
-    # 每天北京时间 11:10 = UTC 03:10
+# 每天北京时间 11:10 = UTC 03:10（用户 11:00 更新表，留 10 分钟缓冲）
     - cron: "10 3 * * *"
   workflow_dispatch:
 
