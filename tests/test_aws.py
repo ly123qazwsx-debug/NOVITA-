@@ -102,6 +102,30 @@ def test_aws_brief_template():
     assert "【S3】" in brief
 
 
+def test_aws_excludes_total_fee_column_and_reads_bracket_previous():
+    """真实表头含 AWS-总费用($)，A35 为【上月同期】，不能把总费用当计费项。"""
+    header = [
+        "单位: 美元", "AWS-总费用($)", "RDS-数据库", "S3($)", "ELB-负载均衡", "ECS",
+        "EC2 实例($)", "Amplify($)", "CloudFront($)", "ElastiCache($)", "VPC($)",
+    ]
+    rows = [header]
+    for day in range(1, 32):
+        rows.append([f"8月{day}日", 400.0 + day, 100.0, 90.0, 50.0, 45.0, 25.0, 10.0, 18.0, 16.0, 15.0, 7.0])
+    rows.append([""] * 11)
+    rows.append(["当期合计", 14116.08, 2488.0, 2200.0, 1200.0, 1000.0, 500.0, 400.0, 350.0, 300.0, 250.0, 100.0])
+    rows.append(["【上月同期】", 13418.12, 1824.86, 2100.0, 1100.0, 950.0, 480.0, 380.0, 340.0, 290.0, 240.0, 95.0])
+    rows.append(["环比率", "5%", "58%", "-2%", "5%", "5%", "4%", "5%", "3%", "3%", "4%", "5%"])
+    assert rows[34][0] == "【上月同期】"
+    df, labels = parse_aws_rows(rows)
+    assert "AWS-总费用" not in " ".join(labels.values())
+    assert "rds" in labels
+    metrics = calculate_aws_metrics(df, labels, TEST_CONFIG, as_of=AS_OF)
+    assert metrics.mom_source == "sheet_footer"
+    assert all("总费用" not in s.label for s in metrics.top10)
+    assert abs(metrics.mom_by_key["rds"].previous - 1824.86) < 1e-6
+    assert metrics.top10[0].label.startswith("RDS")
+
+
 def test_aws_mom_footer_a35_label_previous():
     """A35 单元格标记「上月同期」，金额从 B 列起与表头服务列对齐。"""
     header = [

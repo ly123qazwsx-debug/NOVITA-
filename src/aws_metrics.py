@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from .data_fetcher import _mom_from_amounts
+from .aws_data_fetcher import _is_billable_service
 from .report_date import overview_matches_report, resolve_report_date
 
 AWS_OVERVIEW_KEYS = ("month_total", "daily_avg", "forecast")
@@ -114,6 +115,8 @@ def calculate_aws_metrics(
     report_date = resolve_report_date(df, config, as_of=as_of)
 
     keys: list[str] = list(getattr(df, "attrs", {}).get("service_keys") or [c for c in df.columns if c not in ("date", "total")])
+    labels_map = labels or (getattr(df, "attrs", {}).get("service_labels") or {})
+    keys = [k for k in keys if _is_billable_service(labels_map.get(k, k))]
     cur_start = _month_start(report_date)
     cur_end = report_date
     if df[(df["date"] >= cur_start) & (df["date"] <= cur_end)].empty:
