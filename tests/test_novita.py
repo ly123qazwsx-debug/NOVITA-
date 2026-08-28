@@ -117,6 +117,44 @@ def test_mom_uses_august_footer_not_july_sd_anomaly():
     assert metrics.mom_changes["sd"]["previous"] < 5000
 
 
+def test_footer_label_found_in_any_cell():
+    """表底汇总标签不一定在日期列（合并单元格时）。"""
+    from src.data_fetcher import parse_sheet_mom_summary
+
+    rows = [
+        ["年", "月", "单位: 美元", "LLM", "sd", "GPU (按需)", "GPU (按需存储)", "GPU 固定", "NOVITA 总消耗"],
+        [2026, 8, "8月1日", 300, 100, 5, 20, 1400, 1825],
+        ["08月 当期合计值", "", "", 9060.87, 3274.06, 733.91, 790.96, 43935.51, 57795.31],
+        ["08月 上月同期合计值", "", "", 7614.18, 3648.95, 1063.67, 688.02, 40625.47, 53506.63],
+        ["08月 环比率", "", "", "19%", "-10%", "-31%", "15%", "8%", "8%"],
+    ]
+    parsed = parse_sheet_mom_summary(rows)
+    assert 8 in parsed
+    assert abs(parsed[8]["current"]["llm"] - 9060.87) < 1e-6
+    assert int(round(parsed[8]["rate"]["llm"])) == 19
+
+
+def test_overview_decimal_rate_parsed_as_percent():
+    """飞书对比表环比率常返回 0.08 而非 8%，不能显示成 +0.1% / 环比持平。"""
+    from src.data_fetcher import parse_sheet_overview_table
+
+    rows = [
+        ["当月总消耗（8.1-8.26）", 57795.31, 53506.63, 4288.68, 0.08],
+        ["日消耗-含固定GPU", 2222.90, 2057.95, 164.95, 0.08],
+        ["日消耗-按需计费", 533.07, 500.11, 32.96, 0.07],
+        ["预计8月总消耗", 61309.65, 58026.69, 3282.96, 0.06],
+    ]
+    parsed = parse_sheet_overview_table(rows)
+    assert int(round(parsed["month_total"]["rate"])) == 8
+    assert int(round(parsed["daily_with_fixed"]["rate"])) == 8
+
+    df = parse_novita_rows(SAMPLE_ROWS)
+    df.attrs["sheet_overview"] = parsed
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+    month_total = next(r for r in metrics.overview if r["key"] == "month_total")
+    assert int(round(month_total["rate"])) == 8
+
+
 def test_overview_uses_feishu_july_table():
     """第一个板块用飞书对比表里的 7 月数，不用逐日加总。"""
     from src.data_fetcher import parse_sheet_overview_table, parse_sheet_overrides
