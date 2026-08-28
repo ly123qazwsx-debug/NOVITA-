@@ -236,28 +236,25 @@ def _summary_kind(label: str) -> str | None:
     return None
 
 
-def _row_summary_meta(row: list[Any], col_index: dict[str, int]) -> tuple[str | None, int | None, int | None]:
+def _row_summary_meta(row: list[Any], col_index: dict[str, int]) -> tuple[str | None, int | None]:
     """从整行扫描表底汇总标签（兼容合并单元格）。"""
-    date_idx = col_index["date"]
-    primary = _norm(row[date_idx] if date_idx < len(row) else "")
+    primary = _norm(row[col_index["date"]] if col_index["date"] < len(row) else "")
     kind = _summary_kind(primary)
     label = primary
-    label_col_idx = date_idx if kind else None
     month_match = MONTH_RE.search(primary)
     if kind is None:
-        for i, cell in enumerate(row):
+        for cell in row:
             candidate = _norm(cell)
             if not candidate:
                 continue
             kind = _summary_kind(candidate)
             if kind:
                 label = candidate
-                label_col_idx = i
                 if not month_match:
                     month_match = MONTH_RE.search(candidate)
                 break
     month = int(month_match.group(1)) if month_match else None
-    return kind, month, label_col_idx
+    return kind, month
 
 
 def _amounts_from_row(
@@ -303,7 +300,7 @@ def parse_sheet_mom_summary(raw_rows: list[list[Any]]) -> dict[int, dict[str, di
         if not row or all(_norm(c) == "" for c in row):
             continue
         month = _parse_int(row[1] if len(row) > 1 else "") or last_month
-        kind, label_month, _ = _row_summary_meta(row, col_index)
+        kind, label_month = _row_summary_meta(row, col_index)
         if label_month:
             month = label_month
         if month:

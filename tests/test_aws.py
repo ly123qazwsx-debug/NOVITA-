@@ -102,32 +102,6 @@ def test_aws_brief_template():
     assert "【S3】" in brief
 
 
-def test_aws_mom_footer_row35_with_shifted_label_column():
-    """飞书 AWS 表底「上月同期」常在第 35 行，标签在 B 列时金额整体右移一列。"""
-    header = [
-        "单位: 美元", "RDS-数据库", "S3", "ELB-负载均衡", "ECS", "EC2 实例",
-        "Amplify", "CloudFront", "ElasticCache", "VPC", "EC2-其他", "AWS 总消耗",
-    ]
-    rows = [header]
-    for day in range(1, 32):
-        rows.append([f"8月{day}日"] + [100.0] * 10 + [1000.0])
-    rows.append([""] * 13)  # 空行
-    # 第 34-36 行：当期 / 上月同期 / 环比率（标签在 B 列）
-    rows.append(["", "08月 当期合计值", 2885.74, 2708.06, 1408.28, 1168.06, 650.88, 525.82, 457.13, 420.31, 411.38, 179.04, 14116.08])
-    rows.append(["", "08月 上月同期合计值", 1824.86, 2771.28, 1205.69, 1224.55, 691.83, 253.08, 642.71, 407.84, 421.24, 226.57, 13418.12])
-    rows.append(["", "08月 环比率", "58%", "-2%", "17%", "-5%", "-6%", "108%", "-29%", "3%", "-2%", "-21%", "5%"])
-    assert len(rows) == 36
-    assert "上月同期" in str(rows[34][1])  # 第 35 行
-    df, labels = parse_aws_rows(rows)
-    assert len(df) == 31
-    metrics = calculate_aws_metrics(df, labels, TEST_CONFIG, as_of=AS_OF)
-    assert metrics.mom_source == "sheet_footer"
-    assert abs(metrics.mom_by_key["rds"].previous - 1824.86) < 1e-6
-    assert abs(metrics.mom_by_key["rds"].current - 2885.74) < 1e-6
-    assert int(round(metrics.mom_by_key["rds"].rate)) == 58
-    assert abs(metrics.previous_period.totals["total"] - 13418.12) < 1e-6
-
-
 def test_aws_dashboard_generates():
     import tempfile
     from pathlib import Path
