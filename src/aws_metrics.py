@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from .data_fetcher import _mom_from_amounts
+from .report_date import overview_matches_report, resolve_report_date
 
 AWS_OVERVIEW_KEYS = ("month_total", "daily_avg", "forecast")
 
@@ -66,10 +67,6 @@ def _same_period_last_month(end_date: date) -> tuple[date, date]:
     return prev_start, prev_end
 
 
-def _yesterday(tz: ZoneInfo) -> date:
-    return datetime.now(tz).date() - timedelta(days=1)
-
-
 def _sum_period(df: pd.DataFrame, keys: list[str], start: date, end: date) -> dict[str, float]:
     mask = (df["date"] >= start) & (df["date"] <= end)
     subset = df.loc[mask]
@@ -114,7 +111,7 @@ def calculate_aws_metrics(
 ) -> AwsReportMetrics:
     tz = ZoneInfo(config["report"]["timezone"])
     generated_on = datetime.now(tz).date()
-    report_date = as_of or _yesterday(tz)
+    report_date = resolve_report_date(df, config, as_of=as_of)
 
     keys: list[str] = list(getattr(df, "attrs", {}).get("service_keys") or [c for c in df.columns if c not in ("date", "total")])
     cur_start = _month_start(report_date)
@@ -170,7 +167,7 @@ def calculate_aws_metrics(
     linear_forecast = month_total / cur_days * days_in_month if cur_days else 0.0
     prev_month_full = prev_totals.get("total", 0.0) / prev_days * days_in_month if prev_days else 0.0
 
-    if all(k in sheet_overview for k in AWS_OVERVIEW_KEYS):
+    if all(k in sheet_overview for k in AWS_OVERVIEW_KEYS) and overview_matches_report(sheet_overview, report_date):
         overview_source = "sheet_table"
         overview = [
             {"key": k, "label": overview_labels[k], **_item(

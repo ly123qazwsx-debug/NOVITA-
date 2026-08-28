@@ -129,6 +129,8 @@ def build_sample_aws_dataframe() -> tuple[pd.DataFrame, dict[str, str]]:
         amplify = 7.4 + max(0, day - 13) * 1.28
         if day == 25:
             amplify = 38.2
+        elif day == 26:
+            amplify = 39.0
         return {
             "rds": rds,
             "s3": s3,
@@ -146,7 +148,7 @@ def build_sample_aws_dataframe() -> tuple[pd.DataFrame, dict[str, str]]:
     for month_offset in (1, 0):
         year = 2026
         month = 8 if month_offset == 0 else 7
-        days = 25
+        days = 26 if month_offset == 0 else 26
         for day in range(1, days + 1):
             d = date(year, month, day)
             values = _daily_value(month, day, current=(month_offset == 0))
@@ -159,6 +161,7 @@ def build_sample_aws_dataframe() -> tuple[pd.DataFrame, dict[str, str]]:
         "month_total": {"current": 14116.08, "previous": 13418.12, "change": 697.96, "rate": 5},
         "daily_avg": {"current": 564.64, "previous": 536.72, "change": 27.92, "rate": 5},
         "forecast": {"current": 17148.69, "previous": 16462.11, "change": 686.58, "rate": 4},
+        "period_end": date(2026, 8, 26),
     }
     df.attrs["sheet_mom"] = {
         8: {
@@ -192,7 +195,7 @@ def run_novita(config: dict, client: FeishuClient | None, args, output_dir: Path
         print(f"NOVITA 已读取 {len(df)} 条，{df['date'].min()} ~ {df['date'].max()}")
 
     extra_notes = list(config.get("insights", {}).get("extra_notes") or [])
-    metrics = calculate_metrics(df, config)
+    metrics = calculate_metrics(df, config, as_of=args.as_of_date)
     print(
         f"NOVITA 统计：{metrics.current_period.start.month}/{metrics.current_period.start.day}"
         f"-{metrics.current_period.end.month}/{metrics.current_period.end.day}"
@@ -231,7 +234,7 @@ def run_aws(config: dict, client: FeishuClient | None, args, output_dir: Path) -
         print(f"AWS 已读取 {len(df)} 条，{df['date'].min()} ~ {df['date'].max()}")
 
     watch_items = list((config.get("aws") or {}).get("insights", {}).get("watch_services") or [])
-    metrics = calculate_aws_metrics(df, labels, config)
+    metrics = calculate_aws_metrics(df, labels, config, as_of=args.as_of_date)
     print(
         f"AWS 统计：{metrics.current_period.start.month}/{metrics.current_period.start.day}"
         f"-{metrics.current_period.end.month}/{metrics.current_period.end.day}"
@@ -266,6 +269,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--no-push", action="store_true")
+    parser.add_argument("--as-of", dest="as_of_date", type=lambda s: date.fromisoformat(s), help="统计截止日期 YYYY-MM-DD（默认取表内最新日期）")
     args = parser.parse_args()
 
     load_dotenv()

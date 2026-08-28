@@ -139,7 +139,7 @@ def test_overview_decimal_rate_parsed_as_percent():
     from src.data_fetcher import parse_sheet_overview_table
 
     rows = [
-        ["当月总消耗（8.1-8.26）", 57795.31, 53506.63, 4288.68, 0.08],
+        ["当月总消耗（8.1-8.19）", 57795.31, 53506.63, 4288.68, 0.08],
         ["日消耗-含固定GPU", 2222.90, 2057.95, 164.95, 0.08],
         ["日消耗-按需计费", 533.07, 500.11, 32.96, 0.07],
         ["预计8月总消耗", 61309.65, 58026.69, 3282.96, 0.06],
@@ -174,7 +174,7 @@ def test_overview_uses_feishu_july_table():
     assert parse_sheet_overrides(rows)["actual"] == 60910.12
 
     df = parse_novita_rows(rows)
-    metrics = calculate_metrics(df, TEST_CONFIG, as_of=AS_OF)
+    metrics = calculate_metrics(df, TEST_CONFIG, as_of=date(2026, 8, 20))
     assert metrics.overview_source == "sheet_table"
     month_total = next(r for r in metrics.overview if r["key"] == "month_total")
     forecast = next(r for r in metrics.overview if r["key"] == "forecast")

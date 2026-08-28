@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from .data_fetcher import COST_COLUMNS, _normalize_pct_rate
+from .report_date import overview_matches_report, resolve_report_date
 
 CATEGORY_LABELS = {
     "llm": "LLM",
@@ -126,7 +127,7 @@ def calculate_metrics(
     """统计区间固定为本月 1 日～昨天，不随表格最后一行滑动。"""
     tz = ZoneInfo(config["report"]["timezone"])
     generated_on = datetime.now(tz).date()
-    report_date = as_of or _yesterday(tz)
+    report_date = resolve_report_date(df, config, as_of=as_of)
 
     cur_start = _month_start(report_date)
     cur_end = report_date
@@ -205,7 +206,7 @@ def calculate_metrics(
         "daily_ondemand": "日消耗-按需(LLM/SD/GPU按需/存储）",
         "forecast": f"预计{report_date.month}月总消耗",
     }
-    if all(k in sheet_overview for k in OVERVIEW_KEYS):
+    if all(k in sheet_overview for k in OVERVIEW_KEYS) and overview_matches_report(sheet_overview, report_date):
         overview_source = "sheet_table"
         overview = [
             {
