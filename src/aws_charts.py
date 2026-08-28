@@ -1,4 +1,4 @@
-"""AWS 深色看板：对齐业务上传模板（3 KPI + Top10 六列表 + 两组日趋势）。"""
+"""AWS 深色看板：严格对齐用户上传模板（3 KPI + Top10 表 + 两组日趋势）。"""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ from matplotlib.patches import FancyBboxPatch
 from matplotlib.ticker import FuncFormatter
 
 from .aws_metrics import AwsReportMetrics
+from .aws_sheet_analysis import AwsSheetAnalysis
 
-# 配色从用户上传模板像素采样（冷色深蓝底 + 冷白字 + 粉/绿涨跌）
+# 配色从用户上传模板像素采样
 BG = "#06121B"
 CARD = "#0D202D"
 CARD_ALT = "#112938"
@@ -20,15 +21,15 @@ CARD_LINE = "#183746"
 TEXT = "#EDF4F7"
 MUTED = "#9EB0B8"
 GRID = "#1C313E"
-ACCENT = "#F283C1"   # KPI 顶栏、上涨色
-TITLE = "#EDF4F7"    # 主标题 / 分区标题
+ACCENT = "#F283C1"
+TITLE = "#EDF4F7"
 UP = "#F283C1"
 DOWN = "#67DDB4"
 HEADER = "#112938"
 TABLE_EDGE = "#183746"
 LABEL_BG = "#0D202D"
-UNIT = "美元"
-UNIT_TAG = "单位：美元"
+UNIT = "USD"
+UNIT_TAG = "单位：USD"
 
 SERVICE_COLORS = {
     "rds": "#5DA5E8",
@@ -145,7 +146,7 @@ def _draw_kpi(ax, item: dict, metrics: AwsReportMetrics) -> None:
     titles = {
         "month_total": ("当月总消耗", _period_range(metrics)),
         "daily_avg": ("日消耗", "本期日均"),
-        "forecast": (f"预计{metrics.current_period.end.month}月总消耗", "按工作日口径预估"),
+        "forecast": (f"预计{metrics.current_period.end.month}月总消耗", "按工作簿预估"),
     }
     title, subtitle = titles.get(item["key"], (item.get("label", ""), ""))
     ax.set_xlim(0, 1)
@@ -183,9 +184,15 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
     ax.set_facecolor(BG)
     p = metrics.current_period
     sym = metrics.currency_symbol
-    ax.set_title(
+    ax.text(
+        0, 1.02,
         f"累计消耗前10项 ｜ 分项环比明细 ｜ {UNIT_TAG}",
-        fontsize=20, color=TITLE, loc="left", pad=10, fontweight="bold",
+        fontsize=20, color=TITLE, fontweight="bold", transform=ax.transAxes, va="bottom",
+    )
+    ax.text(
+        0, 0.97,
+        "对比区间：本期明细与上月同期",
+        fontsize=13, color=MUTED, transform=ax.transAxes, va="bottom",
     )
 
     rows = metrics.top10
@@ -217,6 +224,7 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
         cellLoc="center",
         colColours=[HEADER] * 6,
         cellColours=colors,
+        bbox=[0, 0.02, 1, 0.90],
     )
     table.auto_set_font_size(False)
     table.set_fontsize(13)
@@ -236,7 +244,7 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
 
 
 def _date_labels(dates, month: int) -> list[str]:
-    return [f"{month}/{int(d.day)}" for d in dates]
+    return [f"{month}月{int(d.day)}日" for d in dates]
 
 
 def _service_color(key: str, index: int) -> str:
@@ -244,6 +252,7 @@ def _service_color(key: str, index: int) -> str:
 
 
 def _plot_trend(ax, metrics: AwsReportMetrics, services: list, title: str) -> None:
+    """排名 1-5 / 6-10 多线日趋势（模板样式，不含 AWS 总费用）。"""
     df = metrics.trend_df.sort_values("date")
     _style_ax(ax)
     if df.empty or not services:
@@ -288,21 +297,43 @@ def _plot_trend(ax, metrics: AwsReportMetrics, services: list, title: str) -> No
                 text.set_color(TEXT)
 
 
-def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
+def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path, *, analysis: AwsSheetAnalysis | None = None) -> Path:
     _setup_font()
     output_dir.mkdir(parents=True, exist_ok=True)
     p = metrics.current_period
     top5 = metrics.top10[:5]
     rest = metrics.top10[5:10]
 
-    fig = plt.figure(figsize=(22.0, 24.0), facecolor=BG)
-    outer = GridSpec(6, 1, height_ratios=[0.52, 0.88, 1.65, 2.55, 2.35, 0.28], hspace=0.22, top=0.975, bottom=0.03, left=0.06, right=0.94)
+    # 模板原图 1570×2000
+    fig = plt.figure(figsize=(15.7, 20.0), facecolor=BG)
+    outer = GridSpec(
+        6, 1,
+        height_ratios=[0.52, 0.88, 1.65, 2.55, 2.35, 0.28],
+        hspace=0.22,
+        top=0.975,
+        bottom=0.03,
+        left=0.06,
+        right=0.94,
+    )
 
     title_ax = fig.add_subplot(outer[0])
     title_ax.axis("off")
     title_ax.set_facecolor(BG)
-    title_ax.text(0, 0.55, f"AWS {p.end.month}月成本概览（截至{p.end.month}/{p.end.day}）", fontsize=36, fontweight="bold", color=TITLE, va="center")
-    title_ax.text(1.0, 0.55, "前10项消耗与趋势明细均按实际数据生成", fontsize=15, color=MUTED, ha="right", va="center")
+    title_ax.text(
+        0, 0.72,
+        f"AWS {p.end.month}月成本概览 (截至 {p.end.month}/{p.end.day})",
+        fontsize=34, fontweight="bold", color=TITLE, va="center",
+    )
+    title_ax.text(
+        0, 0.22,
+        f"统计区间：{_period_range(metrics)} · {UNIT_TAG}",
+        fontsize=14, color=MUTED, va="center",
+    )
+    title_ax.text(
+        1.0, 0.55,
+        "成本前十项 · 日度趋势详情",
+        fontsize=14, color=MUTED, ha="right", va="center",
+    )
 
     gs_kpi = outer[1].subgridspec(1, 3, wspace=0.08)
     for i, item in enumerate(metrics.overview):
@@ -315,12 +346,16 @@ def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
     footer = fig.add_subplot(outer[5])
     footer.axis("off")
     footer.set_facecolor(BG)
-    footer.text(0, 0.65, f"口径说明：明细区间为 {_period_range(metrics)}；汇总数据来源于 AWS.xlsx。所有趋势点均显示金额。", fontsize=12, color=MUTED)
+    footer.text(
+        0, 0.65,
+        f"口径说明：明细区间为 {_period_range(metrics)}；汇总数据来源于 AWS.xlsx。所有趋势点均显示金额。",
+        fontsize=12, color=MUTED,
+    )
     footer.text(0, 0.15, "数据来源：AWS.xlsx", fontsize=12, color=MUTED)
     footer.text(1.0, 0.15, f"金额单位：{UNIT}", fontsize=12, color=MUTED, ha="right")
 
     path = output_dir / "aws_dashboard.png"
-    fig.savefig(path, dpi=165, facecolor=fig.get_facecolor())
+    fig.savefig(path, dpi=100, facecolor=fig.get_facecolor())
     plt.close(fig)
     return _flatten_png(path)
 
@@ -338,6 +373,11 @@ def _flatten_png(path: Path) -> Path:
     return path
 
 
-def generate_aws_charts(metrics: AwsReportMetrics, output_dir: Path) -> dict[str, Path]:
+def generate_aws_charts(
+    metrics: AwsReportMetrics,
+    output_dir: Path,
+    *,
+    analysis: AwsSheetAnalysis | None = None,
+) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    return {"aws_dashboard": plot_aws_dashboard(metrics, output_dir)}
+    return {"aws_dashboard": plot_aws_dashboard(metrics, output_dir, analysis=analysis)}
