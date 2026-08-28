@@ -4,13 +4,30 @@ feishu:
   app_id: "cli_xxxxxxxxxx"
   app_secret: "xxxxxxxxxxxxxxxxxxxxxxxx"
 
-# 数据源：飞书 Wiki 内嵌电子表格 NOVITA
-# https://dreamonvip.feishu.cn/wiki/AbzbwxIJiiyxIAkMFkKcRHJZnKG?sheet=v9euzu
+# 数据源：飞书 Wiki 内嵌电子表格
+# https://dreamonvip.feishu.cn/wiki/AbzbwxIJiiyxIAkMFkKcRHJZnKG
 data_source:
   wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
   sheet_name: "NOVITA"
   sheet_id: "v9euzu"
   range: "A1:Z400"
+
+# AWS 工作表（同一 Wiki 文档内）
+aws:
+  data_source:
+    wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
+    sheet_name: "AWS"
+    range: "A1:Z400"
+  insights:
+    watch_services:
+      - key: elb
+        label: "ELB 负载均衡"
+        rise_since_day: 15
+        note: "重点检查 prod-api-ecs 是否存在闲置资源、请求量增加或配置重复"
+      - key: s3
+        label: "S3"
+        rise_since_day: 15
+        note: "重点检查 digen-asset、liveme-process、liveme-pic 的存储增长、文件上传、请求和流量情况。"
 
 # 列按 NOVITA 表固定顺序解析：
 # A年 B月 C日(8月1日) D LLM  E sd  F GPU (按需)  G GPU (按需存储)  H GPU 固定

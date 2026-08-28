@@ -1,8 +1,8 @@
-name: NOVITA Daily Cost Report
+name: Daily Cost Report
 
 on:
   schedule:
-# 每天北京时间 11:10 = UTC 03:10（用户 11:00 更新表，留 10 分钟缓冲）
+    # 每天北京时间 11:10 = UTC 03:10（用户 11:00 更新表，留 10 分钟缓冲）
     - cron: "10 3 * * *"
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
       - name: Create config
         run: cp config.example.yaml config.yaml
 
-      - name: Generate report and push to Feishu
+      - name: Generate NOVITA + AWS reports and push to Feishu
         env:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
@@ -32,11 +32,11 @@ jobs:
           FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
           FEISHU_RECEIVE_ID: ${{ secrets.FEISHU_RECEIVE_ID }}
           FEISHU_RECEIVE_ID_TYPE: ${{ secrets.FEISHU_RECEIVE_ID_TYPE }}
-        run: python3 main.py
+        run: python3 main.py --report all
 
       - name: Upload report artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: novita-report-${{ github.run_id }}
+          name: cost-report-${{ github.run_id }}
           path: output/
           retention-days: 90
