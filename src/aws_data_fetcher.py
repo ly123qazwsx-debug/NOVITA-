@@ -126,16 +126,14 @@ def _amounts_from_service_row(
     *,
     as_rate: bool = False,
     total_idx: int | None = None,
-    index_offset: int = 0,
 ) -> dict[str, float]:
     parse = _parse_pct if as_rate else _parse_amount
     amounts: dict[str, float] = {}
     for key, meta in services.items():
-        i = meta["index"] + index_offset
+        i = meta["index"]
         amounts[key] = parse(row[i] if i < len(row) else "")
-    if total_idx is not None:
-        total_col = total_idx + index_offset
-        total = parse(row[total_col] if total_col < len(row) else "")
+    if total_idx is not None and total_idx < len(row):
+        total = parse(row[total_idx])
     else:
         total = float("nan")
     if as_rate:
@@ -164,24 +162,15 @@ def parse_aws_mom_summary(
         if month_idx is not None and month_idx < len(row):
             month = _valid_month(_parse_int(row[month_idx]))
         month = month or last_month
-        kind, label_month, label_col_idx = _row_summary_meta(row, {"date": date_idx})
+        kind, label_month = _row_summary_meta(row, {"date": date_idx})
         if label_month:
             month = label_month
         if month:
             last_month = month
         if kind is None or month is None:
             continue
-        index_offset = 0
-        if label_col_idx is not None and label_col_idx != date_idx:
-            index_offset = label_col_idx - date_idx
         block = result.setdefault(month, {})
-        block[kind] = _amounts_from_service_row(
-            row,
-            services,
-            as_rate=(kind == "rate"),
-            total_idx=total_idx,
-            index_offset=index_offset,
-        )
+        block[kind] = _amounts_from_service_row(row, services, as_rate=(kind == "rate"), total_idx=total_idx)
     return result
 
 
