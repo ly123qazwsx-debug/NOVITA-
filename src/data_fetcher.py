@@ -225,12 +225,18 @@ def _summary_kind(label: str) -> str | None:
     text = label.replace(" ", "").replace("　", "")
     if "环比率" in text or ("环比" in text and "率" in text):
         return "rate"
+    if text in ("上月同期", "上月同期合计", "上月同期合计值", "上月同期合计数据"):
+        return "previous"
     if "上月同期" in text:
         return "previous"
+    if text in ("当期合计", "当期合计值", "当月合计", "当月合计值"):
+        return "current"
     if any(k in text for k in ("当期合计", "当月合计", "本期合计", "当期总计", "当月总计")):
         return "current"
     if ("当期" in text or "当月" in text or "本期" in text) and ("合计" in text or "总计" in text):
         return "current"
+    if text in ("环比", "环比额", "环比金额"):
+        return "change"
     if "环比" in text and "率" not in text:
         return "change"
     return None

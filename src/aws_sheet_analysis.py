@@ -97,7 +97,7 @@ def analyze_aws_sheet(df: pd.DataFrame, metrics: AwsReportMetrics) -> AwsSheetAn
         SheetRegion(
             name="表底汇总区",
             description="当期合计、上月同期、环比率三行；上月同期为同区间对照值（非简单按月加总）",
-            rows_hint="通常在第 34–36 行附近（上月同期常见在第 35 行）",
+            rows_hint="第 35 行 A 列「上月同期」；也可能在 B 列带月份前缀",
             used_for=["Top10 环比表：当期 / 上月同期 / 环比率 / 占比"],
         ),
         SheetRegion(
