@@ -102,6 +102,27 @@ def test_aws_brief_template():
     assert "【S3】" in brief
 
 
+def test_aws_mom_row35_without_label_merged_cell():
+    """飞书合并单元格时第 35 行可能只有数字、没有【上月同期】文本。"""
+    header = [
+        "单位: 美元", "AWS-总费用($)", "RDS-数据库", "S3($)", "ELB-负载均衡", "ECS",
+        "EC2 实例($)", "Amplify($)", "CloudFront($)", "ElastiCache($)", "VPC($)",
+    ]
+    rows = [header]
+    for day in range(1, 32):
+        rows.append([f"8月{day}日", 400.0, 100.0, 90.0, 50.0, 45.0, 25.0, 10.0, 18.0, 16.0, 15.0])
+    rows.append([""] * 11)
+    rows.append(["当期合计", 14116.08, 2488.0, 2200.0, 1200.0, 1000.0, 500.0, 400.0, 350.0, 300.0, 250.0])
+    # 第 35 行：合并单元格无标签，直接从总费用金额开始
+    rows.append([13418.12, 1824.86, 2100.0, 1100.0, 950.0, 480.0, 380.0, 340.0, 290.0, 240.0])
+    rows.append(["环比率", "5%", "58%", "-2%", "5%", "5%", "4%", "5%", "3%", "3%", "4%"])
+    df, labels = parse_aws_rows(rows)
+    metrics = calculate_aws_metrics(df, labels, TEST_CONFIG, as_of=AS_OF)
+    assert metrics.mom_source == "sheet_footer"
+    assert abs(metrics.mom_by_key["rds"].previous - 1824.86) < 1e-6
+    assert abs(metrics.mom_by_key["s3"].previous - 2100.0) < 1e-6
+
+
 def test_aws_excludes_total_fee_column_and_reads_bracket_previous():
     """真实表头含 AWS-总费用($)，A35 为【上月同期】，不能把总费用当计费项。"""
     header = [

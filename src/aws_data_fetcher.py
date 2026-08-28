@@ -18,6 +18,7 @@ from .data_fetcher import (
     _parse_int,
     _parse_pct,
     _row_summary_meta,
+    _summary_kind,
     resolve_spreadsheet_token,
 )
 from .feishu_client import FeishuClient
@@ -171,6 +172,53 @@ def _amounts_from_service_row(
     return amounts
 
 
+def _footer_kind_and_col(row: list[Any]) -> tuple[str | None, int | None]:
+    """扫描整行找表底标签（兼容合并单元格导致 A 列不在 row[0]）。"""
+    for i, cell in enumerate(row):
+        text = _normalize_footer_label(_norm(cell))
+        if not text:
+            continue
+        kind = _summary_kind(text)
+        if kind:
+            return kind, i
+    return None, None
+
+
+def _footer_index_offset(
+    row: list[Any],
+    label_col: int | None,
+    services: dict[str, dict[str, Any]],
+    total_idx: int | None,
+    date_idx: int,
+) -> int:
+    first_svc = min(meta["index"] for meta in services.values())
+    if label_col is not None and label_col != date_idx:
+        return label_col - date_idx
+
+    numeric_cols: list[int] = []
+    scan_from = 0 if label_col is None else (label_col + 1)
+    for i in range(scan_from, len(row)):
+        val = _parse_amount(row[i] if i < len(row) else "")
+        if val == val and abs(val) > 1e-9:
+            numeric_cols.append(i)
+    if not numeric_cols:
+        return 0
+    if label_col is None and len(numeric_cols) >= 2 and total_idx is not None:
+        # 合并单元格无标签时，行首第一个数通常是总费用，分项从第二个数起
+        amount_col = numeric_cols[1]
+    else:
+        amount_col = numeric_cols[0]
+        if total_idx is not None and amount_col == total_idx and len(numeric_cols) > 1:
+            amount_col = numeric_cols[1]
+    return amount_col - first_svc
+
+
+def _footer_row_has_amounts(row: list[Any], services: dict[str, dict[str, Any]]) -> bool:
+    first_svc = min(meta["index"] for meta in services.values())
+    val = _parse_amount(row[first_svc] if first_svc < len(row) else "")
+    return val == val and abs(val) > 1e-9
+
+
 def parse_aws_mom_summary(
     raw_rows: list[list[Any]],
     services: dict[str, dict[str, Any]],
@@ -181,55 +229,72 @@ def parse_aws_mom_summary(
     date_idx = layout.get("date_idx") or 0
     month_idx = layout.get("month_idx")
     total_idx = layout.get("total_idx")
-    for row in raw_rows:
-        if not row or all(_norm(c) == "" for c in row):
-            continue
+
+    def _row_month(row: list[Any]) -> int | None:
         month = None
         if month_idx is not None and month_idx < len(row):
             month = _valid_month(_parse_int(row[month_idx]))
-        month = month or last_month
-        kind, label_month, label_col_idx = _row_summary_meta(row, {"date": date_idx})
-        if label_month:
-            month = label_month
-        if month is None:
-            for cell in row:
-                m = MONTH_RE.search(_norm(cell))
-                if m:
-                    month = int(m.group(1))
-                    break
         if month:
-            last_month = month
-        if kind is None or month is None:
-            continue
-        index_offset = 0
-        if label_col_idx is not None and label_col_idx != date_idx:
-            index_offset = label_col_idx - date_idx
+            return month
+        for cell in row:
+            m = MONTH_RE.search(_norm(cell))
+            if m:
+                return int(m.group(1))
+        return last_month
+
+    def _store_footer_row(row: list[Any], kind: str, month: int, label_col: int | None) -> None:
+        offset = _footer_index_offset(row, label_col, services, total_idx, date_idx)
         block = result.setdefault(month, {})
         block[kind] = _amounts_from_service_row(
             row,
             services,
             as_rate=(kind == "rate"),
             total_idx=total_idx,
-            index_offset=index_offset,
+            index_offset=offset,
         )
 
-    # 兜底：第 35 行 A 列【上月同期】
-    if raw_rows and len(raw_rows) >= 35:
+    for row in raw_rows:
+        if not row or all(_norm(c) == "" for c in row):
+            continue
+        month = _row_month(row)
+        kind, label_col = _footer_kind_and_col(row)
+        if month:
+            last_month = month
+        if kind is None or month is None:
+            continue
+        _store_footer_row(row, kind, month, label_col)
+
+    # 兜底：第 35 行（index 34）按位置识别上月同期，即使 A 列合并单元格未返回值
+    if len(raw_rows) >= 35:
         row35 = raw_rows[34]
-        label = _normalize_footer_label(_norm(row35[0] if row35 else ""))
-        if label == "上月同期" or "上月同期" in label:
-            month = last_month
-            for cell in row35:
-                m = MONTH_RE.search(_norm(cell))
+        month = last_month
+        if month is None:
+            for row in raw_rows:
+                m = _row_month(row)
                 if m:
-                    month = int(m.group(1))
-                    break
+                    month = m
+        if month and _footer_row_has_amounts(row35, services):
+            block = result.setdefault(month, {})
+            prev = block.get("previous") or {}
+            prev_total = prev.get("total") if prev else 0
+            if not prev or not prev_total or prev_total != prev_total:
+                kind, label_col = _footer_kind_and_col(row35)
+                if kind != "previous":
+                    label_col = None
+                _store_footer_row(row35, "previous", month, label_col)
+
+    # 三行连续表底：当期 → 上月同期 → 环比率（不依赖行号）
+    for i in range(len(raw_rows) - 2):
+        r1, r2, r3 = raw_rows[i], raw_rows[i + 1], raw_rows[i + 2]
+        k1, c1 = _footer_kind_and_col(r1)
+        k2, c2 = _footer_kind_and_col(r2)
+        k3, c3 = _footer_kind_and_col(r3)
+        if k1 == "current" and k2 == "previous" and k3 == "rate":
+            month = _row_month(r1) or _row_month(r2) or last_month
             if month:
-                block = result.setdefault(month, {})
-                if "previous" not in block:
-                    block["previous"] = _amounts_from_service_row(
-                        row35, services, total_idx=total_idx, index_offset=0,
-                    )
+                _store_footer_row(r1, "current", month, c1)
+                _store_footer_row(r2, "previous", month, c2)
+                _store_footer_row(r3, "rate", month, c3)
     return result
 
 

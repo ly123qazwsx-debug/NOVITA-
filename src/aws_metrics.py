@@ -131,8 +131,10 @@ def calculate_aws_metrics(
     mom_source = "daily"
     sheet_mom = (getattr(df, "attrs", {}) or {}).get("sheet_mom") or {}
     footer = sheet_mom.get(report_date.month) or {}
-    if footer.get("current") and footer.get("previous"):
+    if footer.get("current"):
         cur_totals = _apply_footer(cur_totals, footer["current"])
+        mom_source = "sheet_footer"
+    if footer.get("previous"):
         prev_totals = _apply_footer(prev_totals, footer["previous"])
         mom_source = "sheet_footer"
 
