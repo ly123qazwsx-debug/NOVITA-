@@ -87,15 +87,19 @@ def _apply_footer(base: dict[str, float], footer: dict[str, float]) -> dict[str,
 
 
 def _item(current: float, previous: float, change: float | None = None, rate: float | None = None) -> dict[str, float]:
-    if change is None or change != change:
-        change = current - previous
+    computed_change = current - previous
     if previous > 0:
-        rate = (change / previous) * 100
-    elif rate is None or rate != rate:
+        return {
+            "current": current,
+            "previous": previous,
+            "change": computed_change,
+            "rate": (computed_change / previous) * 100,
+        }
+    if rate is None or rate != rate:
         rate = float("nan")
     elif abs(rate) <= 1:
         rate = rate * 100
-    return {"current": current, "previous": previous, "change": change, "rate": rate}
+    return {"current": current, "previous": previous, "change": computed_change, "rate": rate}
 
 
 def _reindex_days(df: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
@@ -143,9 +147,7 @@ def calculate_aws_metrics(
     for key in keys:
         cur = cur_totals.get(key, 0.0)
         prev = prev_totals.get(key, 0.0)
-        change = (footer.get("change") or {}).get(key)
-        rate = (footer.get("rate") or {}).get(key)
-        item = _item(cur, prev, change, rate)
+        item = _item(cur, prev)
         share = cur / month_total * 100 if month_total else 0.0
         mom_by_key[key] = ServiceMom(
             key=key,

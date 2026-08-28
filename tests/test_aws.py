@@ -121,6 +121,10 @@ def test_aws_mom_row35_without_label_merged_cell():
     assert metrics.mom_source == "sheet_footer"
     assert abs(metrics.mom_by_key["rds"].previous - 1824.86) < 1e-6
     assert abs(metrics.mom_by_key["s3"].previous - 2100.0) < 1e-6
+    rds = metrics.mom_by_key["rds"]
+    assert abs(rds.current - 2488.0) < 1e-6
+    assert abs(rds.change - (rds.current - rds.previous)) < 1e-6
+    assert abs(rds.rate - (rds.change / rds.previous * 100)) < 0.1
 
 
 def test_aws_excludes_total_fee_column_and_reads_bracket_previous():
@@ -145,6 +149,25 @@ def test_aws_excludes_total_fee_column_and_reads_bracket_previous():
     assert all("总费用" not in s.label for s in metrics.top10)
     assert abs(metrics.mom_by_key["rds"].previous - 1824.86) < 1e-6
     assert metrics.top10[0].label.startswith("RDS")
+    rds = metrics.mom_by_key["rds"]
+    assert abs(rds.change - (rds.current - rds.previous)) < 1e-6
+    assert int(round(rds.rate)) == 36
+
+
+def test_aws_mom_change_rate_from_amounts_when_footer_zeros():
+    """表底增减/环比行错位为 0 时，仍应从当期与上月同期金额计算。"""
+    header = ["单位: 美元", "RDS-数据库", "S3", "AWS 总消耗"]
+    rows = [header]
+    for day in range(1, 27):
+        rows.append([f"8月{day}日", 100.0, 90.0, 190.0])
+    rows.append(["当期合计", 200.0, 180.0, 380.0])
+    rows.append(["上月同期", 150.0, 160.0, 310.0])
+    rows.append(["环比率", 0, 0, 0])
+    df, labels = parse_aws_rows(rows)
+    metrics = calculate_aws_metrics(df, labels, TEST_CONFIG, as_of=AS_OF)
+    rds = metrics.mom_by_key["rds"]
+    assert abs(rds.change - 50.0) < 1e-6
+    assert int(round(rds.rate)) == 33
 
 
 def test_aws_mom_footer_a35_label_previous():
