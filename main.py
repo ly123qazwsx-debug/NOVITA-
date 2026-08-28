@@ -17,6 +17,7 @@ from src.aws_charts import generate_aws_charts
 from src.aws_data_fetcher import fetch_aws_data
 from src.aws_insights import format_aws_brief
 from src.aws_metrics import calculate_aws_metrics
+from src.aws_sheet_analysis import analyze_aws_sheet, print_aws_sheet_analysis
 from src.charts import generate_all_charts
 from src.data_fetcher import fetch_cost_data
 from src.feishu_client import FeishuClient
@@ -235,11 +236,13 @@ def run_aws(config: dict, client: FeishuClient | None, args, output_dir: Path) -
 
     watch_items = list((config.get("aws") or {}).get("insights", {}).get("watch_services") or [])
     metrics = calculate_aws_metrics(df, labels, config, as_of=args.as_of_date)
+    analysis = analyze_aws_sheet(df, metrics)
+    print_aws_sheet_analysis(analysis)
     print(
         f"AWS 统计：{metrics.current_period.start.month}/{metrics.current_period.start.day}"
         f"-{metrics.current_period.end.month}/{metrics.current_period.end.day}"
     )
-    charts = generate_aws_charts(metrics, output_dir / "charts")
+    charts = generate_aws_charts(metrics, output_dir / "charts", analysis=analysis)
     md_path = output_dir / f"aws_summary_{metrics.report_date.isoformat()}.md"
     md_path.write_text(format_aws_brief(metrics, watch_items), encoding="utf-8")
     print(md_path.read_text(encoding="utf-8"))
