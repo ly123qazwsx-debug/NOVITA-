@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from .data_fetcher import COST_COLUMNS
+from .data_fetcher import COST_COLUMNS, _normalize_pct_rate
 
 CATEGORY_LABELS = {
     "llm": "LLM",
@@ -104,8 +104,12 @@ def _item_from_parts(
 ) -> dict[str, float]:
     if change is None or change != change:
         change = current - previous
-    if rate is None or rate != rate:
-        _, rate = _mom(current, previous)
+    else:
+        change = float(change)
+    if previous > 0:
+        rate = (change / previous) * 100
+    else:
+        rate = _normalize_pct_rate(rate if rate is not None else float("nan"), current, previous)
     return {"current": current, "previous": previous, "change": change, "rate": rate}
 
 
