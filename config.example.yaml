@@ -17,6 +17,7 @@ aws:
   data_source:
     wiki_token: "AbzbwxIJiiyxIAkMFkKcRHJZnKG"
     sheet_name: "AWS"
+    sheet_id: "6GEpoz"
     range: "A1:Z400"
   insights:
     watch_services:
