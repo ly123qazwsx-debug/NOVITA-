@@ -18,7 +18,6 @@ from .data_fetcher import (
     _parse_int,
     _parse_pct,
     _row_summary_meta,
-    _summary_kind,
     resolve_spreadsheet_token,
 )
 from .feishu_client import FeishuClient
@@ -27,6 +26,19 @@ from .report_date import parse_overview_period_end
 DATE_RE = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日")
 SKIP_KEYWORDS = ("合计", "环比", "当期", "上月同期", "单位", "总消耗")
 META_HEADERS = {"年", "月", "日期", "日", "单位: 美元", "单位：美元"}
+
+
+def _valid_year(value: int | None) -> int | None:
+    if value is None or value < 2000 or value > 2100:
+        return None
+    return value
+
+
+def _valid_month(value: int | None) -> int | None:
+    if value is None or value < 1 or value > 12:
+        return None
+    return value
+
 
 SERVICE_KEY_HINTS: list[tuple[str, str]] = [
     ("RDS", "rds"),
@@ -59,22 +71,28 @@ def _service_key(label: str) -> str:
     return slug or "service"
 
 
-def _find_aws_header(raw_rows: list[list[Any]]) -> tuple[int, list[str], dict[str, dict[str, Any]]]:
+def _find_aws_header(
+    raw_rows: list[list[Any]],
+) -> tuple[int, list[str], dict[str, dict[str, Any]], dict[str, int | None]]:
     for idx, row in enumerate(raw_rows[:15]):
         cells = [_norm(c) for c in row]
         joined = " ".join(cells)
-        if ("RDS" in joined or "S3" in joined) and ("月" in joined or "日" in joined):
+        if "RDS" in joined or "S3" in joined:
             services: dict[str, dict[str, Any]] = {}
-            date_idx = 2
-            total_idx = None
+            year_idx: int | None = None
+            month_idx: int | None = None
+            date_idx: int | None = None
+            total_idx: int | None = None
             for i, name in enumerate(cells):
                 if not name:
                     continue
-                if name in ("年",):
+                if name == "年":
+                    year_idx = i
                     continue
-                if name in ("月",):
+                if name == "月":
+                    month_idx = i
                     continue
-                if name in META_HEADERS or "单位" in name:
+                if name in ("日期", "日") or name in META_HEADERS or "单位" in name:
                     date_idx = i
                     continue
                 if "总消耗" in name or name in ("合计", "AWS合计"):
@@ -84,8 +102,21 @@ def _find_aws_header(raw_rows: list[list[Any]]) -> tuple[int, list[str], dict[st
                 if key in services:
                     key = f"{key}_{i}"
                 services[key] = {"index": i, "label": name}
+            if date_idx is None:
+                for i, name in enumerate(cells):
+                    if "月" in name or "日" in name:
+                        date_idx = i
+                        break
+            if date_idx is None:
+                date_idx = 0
             if services:
-                return idx, cells, services
+                layout = {
+                    "year_idx": year_idx,
+                    "month_idx": month_idx,
+                    "date_idx": date_idx,
+                    "total_idx": total_idx,
+                }
+                return idx, cells, services, layout
     raise ValueError("未找到 AWS 表头行，请确认工作表包含 RDS / S3 等列")
 
 
@@ -114,14 +145,23 @@ def _amounts_from_service_row(
     return amounts
 
 
-def parse_aws_mom_summary(raw_rows: list[list[Any]], services: dict[str, dict[str, Any]], total_idx: int | None) -> dict:
+def parse_aws_mom_summary(
+    raw_rows: list[list[Any]],
+    services: dict[str, dict[str, Any]],
+    layout: dict[str, int | None],
+) -> dict:
     result: dict[int, dict[str, dict[str, float]]] = {}
     last_month: int | None = None
-    date_idx = 2
+    date_idx = layout.get("date_idx") or 0
+    month_idx = layout.get("month_idx")
+    total_idx = layout.get("total_idx")
     for row in raw_rows:
         if not row or all(_norm(c) == "" for c in row):
             continue
-        month = _parse_int(row[1] if len(row) > 1 else "") or last_month
+        month = None
+        if month_idx is not None and month_idx < len(row):
+            month = _valid_month(_parse_int(row[month_idx]))
+        month = month or last_month
         kind, label_month = _row_summary_meta(row, {"date": date_idx})
         if label_month:
             month = label_month
@@ -147,12 +187,12 @@ def _aws_overview_row_key(label: str) -> str | None:
 
 def parse_aws_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
-    year_hint = 2026
+    year_hint = datetime.now().year
     for row in raw_rows:
         if not row:
             continue
         if row[0] not in (None, ""):
-            y = _parse_int(row[0])
+            y = _valid_year(_parse_int(row[0]))
             if y:
                 year_hint = y
         for i, cell in enumerate(row):
@@ -181,35 +221,43 @@ def parse_aws_rows(raw_rows: list[list[Any]]) -> tuple[pd.DataFrame, dict[str, s
     if not raw_rows:
         raise ValueError("飞书 AWS 表返回空数据")
 
-    header_idx, header, services = _find_aws_header(raw_rows)
-    total_idx = None
-    for i, name in enumerate(header):
-        if "总消耗" in name or name in ("合计", "AWS合计"):
-            total_idx = i
-            break
+    header_idx, header, services, layout = _find_aws_header(raw_rows)
+    year_idx = layout.get("year_idx")
+    month_idx = layout.get("month_idx")
+    date_idx = layout.get("date_idx") or 0
+    total_idx = layout.get("total_idx")
 
     labels = {key: meta["label"] for key, meta in services.items()}
     records: list[dict[str, Any]] = []
     last_year: int | None = None
     last_month: int | None = None
+    default_year = datetime.now().year
 
     for row in raw_rows[header_idx + 1 :]:
         if not row or all(_norm(c) == "" for c in row):
             continue
 
-        year = _parse_int(row[0] if len(row) > 0 else "") or last_year
-        month = _parse_int(row[1] if len(row) > 1 else "") or last_month
-        if year:
-            last_year = year
-        if month:
-            last_month = month
+        year = last_year
+        month = last_month
+        if year_idx is not None and year_idx < len(row):
+            parsed_year = _valid_year(_parse_int(row[year_idx]))
+            if parsed_year:
+                year = parsed_year
+                last_year = year
+        if month_idx is not None and month_idx < len(row):
+            parsed_month = _valid_month(_parse_int(row[month_idx]))
+            if parsed_month:
+                month = parsed_month
+                last_month = month
 
-        date_cell = row[2] if len(row) > 2 else ""
+        date_cell = row[date_idx] if date_idx < len(row) else ""
         text = _norm(date_cell)
         if any(k in text for k in SKIP_KEYWORDS):
             continue
-        date_val = _parse_cn_date(date_cell, year, month)
+        date_val = _parse_cn_date(date_cell, year or default_year, month)
         if date_val is None:
+            continue
+        if not _valid_year(date_val.year):
             continue
 
         record: dict[str, Any] = {"date": date_val}
@@ -228,7 +276,7 @@ def parse_aws_rows(raw_rows: list[list[Any]]) -> tuple[pd.DataFrame, dict[str, s
     df = pd.DataFrame(records).drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
     df.attrs["service_labels"] = labels
     df.attrs["service_keys"] = list(services.keys())
-    df.attrs["sheet_mom"] = parse_aws_mom_summary(raw_rows, services, total_idx)
+    df.attrs["sheet_mom"] = parse_aws_mom_summary(raw_rows, services, layout)
     df.attrs["sheet_overview"] = parse_aws_overview_table(raw_rows)
     return df, labels
 
