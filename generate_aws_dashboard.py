@@ -63,53 +63,57 @@ BASE_MTD_CHANGE = 697.96
 BASE_DAILY_CHANGE = 27.92
 BASE_FORECAST_CHANGE = 686.58
 
-# 原图标注过的日度形态（8/1–8/25），后续缩放到表内合计
-DAILY_SHAPE = {
+# 8/1–8/25 日度金额：从上传原图逐点读取，不再缩放（缩放会把 88.0 改成错数）
+DAILY_25 = {
     "RDS-数据库": [
-        137.4, 141.2, 145.1, 148.8, 151.0, 153.1, 149.6, 147.2, 150.0, 150.4,
-        138.2, 121.0, 104.8, 92.4, 82.6, 84.0, 85.2, 86.1, 85.4, 86.0,
-        86.6, 87.0, 87.4, 87.7, 88.0,
+        137.4, 122.8, 148.9, 137.5, 134.2, 131.5, 130.2, 129.1, 126.8, 139.1,
+        139.2, 129.8, 105.3, 90.4, 82.6, 86.3, 107.4, 109.1, 111.5, 106.3,
+        85.0, 79.0, 79.7, 84.5, 88.0,
     ],
     "S3": [
-        98.0, 97.2, 96.8, 98.1, 99.0, 97.6, 99.2, 100.1, 98.4, 99.5,
-        100.2, 99.6, 100.4, 101.0, 105.4, 108.6, 112.8, 116.4, 120.8, 124.6,
-        128.2, 131.2, 129.4, 128.0, 126.8,
+        98.0, 96.1, 99.4, 104.0, 97.8, 99.2, 100.3, 94.7, 102.9, 99.1,
+        103.5, 98.6, 101.3, 97.8, 100.5, 101.0, 114.6, 119.0, 121.7, 122.7,
+        124.1, 123.9, 131.2, 129.2, 126.8,
     ],
     "ELB-负载均衡": [
-        44.1, 44.8, 45.6, 46.2, 47.0, 47.8, 48.6, 49.4, 50.2, 51.0,
-        51.8, 52.6, 53.5, 54.4, 55.2, 56.1, 57.0, 57.9, 58.8, 59.8,
-        60.8, 61.7, 62.6, 63.4, 64.2,
+        44.2, 44.8, 45.0, 45.1, 45.3, 48.9, 49.8, 51.1, 52.5, 58.0,
+        59.2, 56.8, 56.5, 59.1, 61.2, 63.0, 64.0, 61.1, 61.0, 61.8,
+        62.3, 59.7, 60.9, 61.9, 64.2,
     ],
     "ECS": [
-        46.8, 47.2, 46.4, 48.1, 47.6, 49.0, 48.4, 50.4, 47.8, 46.2,
-        47.0, 48.6, 45.8, 46.5, 47.4, 48.2, 46.0, 47.1, 48.8, 46.6,
-        47.5, 48.0, 46.9, 47.3, 46.7,
+        46.1, 48.5, 49.3, 49.9, 48.9, 45.3, 45.3, 45.1, 45.4, 46.9,
+        47.4, 46.8, 47.1, 46.7, 46.5, 46.9, 47.0, 46.6, 46.5, 47.3,
+        48.6, 49.0, 49.8, 50.2, 50.4,
     ],
     "EC2 实例": [
-        26.0, 25.8, 25.4, 25.6, 26.1, 25.9, 25.2, 24.8, 25.5, 26.0,
-        25.7, 24.6, 25.1, 25.8, 26.2, 25.4, 24.9, 25.3, 25.9, 26.0,
-        25.6, 25.2, 25.5, 25.8, 26.0,
+        22.1, 26.7, 26.5, 26.4, 26.6, 26.6, 27.1, 26.3, 26.7, 26.5,
+        27.0, 26.2, 26.1, 25.6, 25.9, 25.9, 26.3, 26.0, 26.0, 25.7,
+        26.0, 25.4, 25.6, 26.2, 25.6,
     ],
     "Amplify": [
-        7.4, 8.1, 8.6, 9.0, 8.8, 9.3, 10.0, 10.4, 11.0, 11.2,
-        11.8, 12.5, 13.8, 18.8, 22.4, 26.0, 28.6, 31.0, 33.2, 34.8,
-        35.8, 36.6, 37.4, 38.1, 38.2,
+        7.4, 7.8, 11.2, 11.2, 12.5, 11.1, 12.3, 9.0, 7.8, 11.2,
+        12.7, 10.8, 13.8, 23.9, 29.1, 29.6, 29.4, 33.1, 31.3, 34.1,
+        38.1, 32.1, 32.9, 34.9, 38.2,
     ],
     "CloudFront": [
-        19.2, 20.4, 21.1, 22.0, 23.2, 22.6, 23.8, 24.8, 23.4, 22.2,
-        21.6, 24.8, 20.8, 19.4, 18.2, 16.8, 15.9, 15.2, 14.8, 14.5,
-        14.3, 14.2, 14.1, 14.0, 14.0,
+        14.2, 15.3, 23.6, 23.0, 22.4, 21.6, 19.2, 24.4, 23.4, 22.2,
+        21.7, 24.8, 24.1, 18.8, 15.2, 14.6, 16.0, 17.6, 15.4, 13.2,
+        13.9, 12.5, 12.2, 12.6, 14.0,
     ],
     "ElastiCache": [
-        16.8, 16.6, 16.9, 17.1, 16.5, 16.8, 17.2, 16.7, 16.4, 16.9,
-        17.3, 16.8, 16.6, 17.0, 16.8, 16.5, 16.9, 17.1, 16.7, 16.6,
-        16.8, 16.9, 16.7, 16.8, 16.8,
+        16.8, 16.8, 16.9, 16.8, 16.8, 16.8, 16.8, 16.7, 16.9, 16.8,
+        16.8, 16.8, 16.8, 16.9, 16.8, 16.9, 17.0, 17.1, 17.0, 16.9,
+        16.8, 16.8, 16.9, 16.8, 16.8,
     ],
-    "VPC": [16.4] * 25,
+    "VPC": [
+        16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.3, 16.5, 16.4,
+        16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.4, 16.4,
+        16.8, 16.9, 17.1, 17.2, 17.3,
+    ],
     "EC2-其他": [
-        7.2, 7.1, 7.3, 7.2, 7.1, 7.2, 7.3, 7.2, 7.1, 7.2,
-        7.3, 7.2, 7.1, 7.2, 7.3, 7.2, 7.1, 7.2, 7.3, 7.2,
-        7.1, 7.2, 7.3, 7.2, 7.2,
+        7.1, 7.1, 7.1, 7.2, 7.2, 7.2, 7.2, 7.1, 7.1, 7.2,
+        7.2, 7.2, 7.2, 7.2, 7.1, 7.2, 7.1, 7.2, 7.1, 7.2,
+        7.3, 7.1, 7.1, 7.2, 7.2,
     ],
 }
 
@@ -160,41 +164,28 @@ def _tone(value: float) -> str:
     return UP if value > 0 else DOWN
 
 
-def _scale_preserve_ends(shape: list[float], total: float) -> np.ndarray:
-    arr = np.array(shape, dtype=float)
-    factor = total / arr.sum()
-    scaled = arr * factor
-    # 尽量保住首尾形态，残差摊到中间日
-    scaled[0] = arr[0]
-    scaled[-1] = arr[-1]
-    mid = scaled[1:-1]
-    residual = total - scaled[0] - scaled[-1] - mid.sum()
-    mid += residual / len(mid)
-    scaled[1:-1] = mid
-    return np.round(scaled, 1)
-
-
-def _extrapolate_day(series: np.ndarray) -> float:
-    slope = (series[-1] - series[-3]) / 2.0
-    nxt = series[-1] + slope
-    lo, hi = float(series.min()) * 0.85, float(series.max()) * 1.08
-    return float(np.round(np.clip(nxt, lo, hi), 1))
+def _next_day(series: list[float]) -> float:
+    """8/26：按原图 8/24→8/25 的变动外推一天。"""
+    nxt = series[-1] + (series[-1] - series[-2])
+    return float(np.round(nxt, 1))
 
 
 def build_dataset() -> dict:
+    assert all(len(v) == BASE_DAYS for v in DAILY_25.values())
     daily: dict[str, np.ndarray] = {}
     rows = []
     top10_25 = sum(r["current"] for r in BASE_ROWS)
-    other_25 = BASE_MTD - top10_25
+    other_daily = (BASE_MTD - top10_25) / BASE_DAYS
 
     for row in BASE_ROWS:
         name = row["name"]
-        s25 = _scale_preserve_ends(DAILY_SHAPE[name], row["current"])
-        day26 = _extrapolate_day(s25)
-        series = np.append(s25, day26)
+        s25 = list(DAILY_25[name])
+        day26 = _next_day(s25)
+        series = np.array(s25 + [day26], dtype=float)
         daily[name] = series
-        current = float(np.round(series.sum(), 2))
-        previous = float(np.round(row["previous"] * AS_OF / BASE_DAYS, 2))
+        current = float(np.round(row["current"] + day26, 2))
+        prev_daily = row["previous"] / BASE_DAYS
+        previous = float(np.round(row["previous"] + prev_daily, 2))
         change = float(np.round(current - previous, 2))
         rate = change / previous * 100 if previous else 0.0
         rows.append(
@@ -207,9 +198,7 @@ def build_dataset() -> dict:
             }
         )
 
-    day26_top10 = sum(float(daily[r["name"]][-1]) for r in BASE_ROWS)
-    other_daily = other_25 / BASE_DAYS
-    day26_total = day26_top10 + other_daily
+    day26_total = sum(float(daily[r["name"]][-1]) for r in BASE_ROWS) + other_daily
     mtd = float(np.round(BASE_MTD + day26_total, 2))
     daily_avg = float(np.round(mtd / AS_OF, 2))
 
@@ -246,7 +235,7 @@ def build_dataset() -> dict:
             "current": forecast,
             "change": float(np.round(forecast - prev_forecast, 2)),
             "rate": (forecast - prev_forecast) / prev_forecast * 100,
-            "note": "8/26 按近三日趋势外推",
+            "note": "含8/26",
         },
     ]
     return {"daily": daily, "rows": rows, "overview": overview}
@@ -402,21 +391,41 @@ def _plot_trend(ax, names, daily, title, y_max, y_step, regular, bold) -> None:
         series = daily[name]
         color = LINE_COLORS[name]
         ls = (0, (4, 2.2)) if name == "VPC" else "-"
-        ax.plot(
-            x,
-            series,
-            color=color,
-            linewidth=1.7,
-            linestyle=ls,
-            marker="o",
-            markersize=3.4,
-            markerfacecolor=color,
-            markeredgecolor=BG,
-            markeredgewidth=0.4,
-            label=name,
-            zorder=3,
-            solid_capstyle="round",
-        )
+        try:
+            from scipy.interpolate import PchipInterpolator
+
+            xs = np.linspace(float(x[0]), float(x[-1]), 420)
+            ys = PchipInterpolator(x, series)(xs)
+            ax.plot(xs, ys, color=color, linewidth=1.7, linestyle=ls, zorder=3, solid_capstyle="round")
+            ax.plot(
+                x,
+                series,
+                color=color,
+                linestyle="none",
+                marker="o",
+                markersize=3.6,
+                markerfacecolor=color,
+                markeredgecolor=BG,
+                markeredgewidth=0.4,
+                label=name,
+                zorder=4,
+            )
+        except Exception:
+            ax.plot(
+                x,
+                series,
+                color=color,
+                linewidth=1.7,
+                linestyle=ls,
+                marker="o",
+                markersize=3.6,
+                markerfacecolor=color,
+                markeredgecolor=BG,
+                markeredgewidth=0.4,
+                label=name,
+                zorder=3,
+                solid_capstyle="round",
+            )
         for i, (xi, val) in enumerate(zip(x, series)):
             dx, dy = _label_offset(name, i, names)
             ax.annotate(
@@ -570,7 +579,7 @@ def generate_dashboard(output_path: Path) -> Path:
     fig.text(
         0.055,
         0.012,
-        "口径说明：明细区间为8/1-8/26；8/1-8/25 汇总对齐原表，8/26 按近三日趋势外推。所有趋势点均显示金额。",
+        "口径说明：明细区间为8/1-8/26。8/1-8/25 逐点取自原图；8/26 按 8/24→8/25 变动补一天。汇总表 = 原表合计 + 8/26。",
         fontproperties=regular,
         fontsize=8,
         color=MUTED,
