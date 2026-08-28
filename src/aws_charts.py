@@ -12,30 +12,35 @@ from matplotlib.ticker import FuncFormatter
 
 from .aws_metrics import AwsReportMetrics
 
-BG = "#0C0C0C"
-CARD = "#161410"
-CARD_LINE = "#3D3820"
-TEXT = "#F7F4E8"
-MUTED = "#B8B08A"
-GRID = "#332F1C"
-ACCENT = "#FF4DA6"
-UP = "#FF7B7B"
-DOWN = "#5FD68A"
-HEADER = "#3A1028"
+# 配色从用户上传模板像素采样（冷色深蓝底 + 冷白字 + 粉/绿涨跌）
+BG = "#06121B"
+CARD = "#0D202D"
+CARD_ALT = "#112938"
+CARD_LINE = "#183746"
+TEXT = "#EDF4F7"
+MUTED = "#9EB0B8"
+GRID = "#1C313E"
+ACCENT = "#F283C1"   # KPI 顶栏、上涨色
+TITLE = "#EDF4F7"    # 主标题 / 分区标题
+UP = "#F283C1"
+DOWN = "#67DDB4"
+HEADER = "#112938"
+TABLE_EDGE = "#183746"
+LABEL_BG = "#0D202D"
 UNIT = "美元"
 UNIT_TAG = "单位：美元"
 
 SERVICE_COLORS = {
-    "rds": "#4A6FA5",
-    "s3": "#F5B800",
-    "elb": "#5CB8B2",
-    "ecs": "#8BC34A",
-    "ec2_instance": "#9B7BD4",
-    "amplify": "#FF6B9D",
-    "cloudfront": "#CFD8DC",
-    "elasticache": "#FFA726",
-    "vpc": "#FFCA28",
-    "ec2_other": "#64B5F6",
+    "rds": "#5DA5E8",
+    "s3": "#F2D84B",
+    "elb": "#46D3D0",
+    "ecs": "#67DDB4",
+    "ec2_instance": "#A792ED",
+    "amplify": "#F283C1",
+    "cloudfront": "#F3A65E",
+    "elasticache": "#EFD64B",
+    "vpc": "#D6E86A",
+    "ec2_other": "#5CA4E6",
 }
 
 
@@ -127,10 +132,10 @@ def _value_label(ax, x, y, text: str, color: str, offset=(0, 8), fontsize: float
         annotation_clip=False,
         bbox={
             "boxstyle": "round,pad=0.18",
-            "facecolor": "#14120A",
+            "facecolor": LABEL_BG,
             "edgecolor": color,
             "linewidth": 0.55,
-            "alpha": 0.94,
+            "alpha": 0.96,
         },
     )
 
@@ -180,14 +185,14 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
     sym = metrics.currency_symbol
     ax.set_title(
         f"累计消耗前10项 ｜ 分项环比明细 ｜ {UNIT_TAG}",
-        fontsize=20, color=ACCENT, loc="left", pad=10, fontweight="bold",
+        fontsize=20, color=TITLE, loc="left", pad=10, fontweight="bold",
     )
 
     rows = metrics.top10
     cell_text = []
     colors = []
     for idx, item in enumerate(rows):
-        stripe = "#1C1A12" if idx % 2 else "#141310"
+        stripe = CARD_ALT if idx % 2 else CARD
         cell_text.append([
             item.label,
             _fmt_amt(item.current, sym),
@@ -217,7 +222,7 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
     table.set_fontsize(13)
     table.scale(1, 1.95)
     for (row, col), cell in table.get_celld().items():
-        cell.set_edgecolor("#4A1830")
+        cell.set_edgecolor(TABLE_EDGE)
         cell.set_linewidth(0.55)
         if row == 0:
             cell.set_text_props(fontweight="bold", color=TEXT)
@@ -242,7 +247,7 @@ def _plot_trend(ax, metrics: AwsReportMetrics, services: list, title: str) -> No
     df = metrics.trend_df.sort_values("date")
     _style_ax(ax)
     if df.empty or not services:
-        ax.set_title(title, loc="left", color=ACCENT)
+        ax.set_title(title, loc="left", color=TITLE, fontweight="bold")
         return
 
     month = metrics.current_period.end.month
@@ -273,11 +278,11 @@ def _plot_trend(ax, metrics: AwsReportMetrics, services: list, title: str) -> No
     ax.set_ylim(0, ymax * 1.42)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
     ax.set_ylabel(f"金额（{UNIT}）", fontsize=13, color=MUTED)
-    ax.set_title(title, fontsize=18, color=ACCENT, loc="left", pad=26, fontweight="bold")
+    ax.set_title(title, fontsize=18, color=TITLE, loc="left", pad=26, fontweight="bold")
     if handles:
         leg = ax.legend(handles, labels_leg, loc="lower left", bbox_to_anchor=(0, 1.01), ncol=min(5, len(handles)), fontsize=11, frameon=True)
         if leg:
-            leg.get_frame().set_facecolor("#14120A")
+            leg.get_frame().set_facecolor(CARD)
             leg.get_frame().set_edgecolor(CARD_LINE)
             for text in leg.get_texts():
                 text.set_color(TEXT)
@@ -295,7 +300,8 @@ def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
 
     title_ax = fig.add_subplot(outer[0])
     title_ax.axis("off")
-    title_ax.text(0, 0.55, f"AWS {p.end.month}月成本概览（截至{p.end.month}/{p.end.day}）", fontsize=36, fontweight="bold", color=ACCENT, va="center")
+    title_ax.set_facecolor(BG)
+    title_ax.text(0, 0.55, f"AWS {p.end.month}月成本概览（截至{p.end.month}/{p.end.day}）", fontsize=36, fontweight="bold", color=TITLE, va="center")
     title_ax.text(1.0, 0.55, "前10项消耗与趋势明细均按实际数据生成", fontsize=15, color=MUTED, ha="right", va="center")
 
     gs_kpi = outer[1].subgridspec(1, 3, wspace=0.08)
@@ -308,6 +314,7 @@ def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
 
     footer = fig.add_subplot(outer[5])
     footer.axis("off")
+    footer.set_facecolor(BG)
     footer.text(0, 0.65, f"口径说明：明细区间为 {_period_range(metrics)}；汇总数据来源于 AWS.xlsx。所有趋势点均显示金额。", fontsize=12, color=MUTED)
     footer.text(0, 0.15, "数据来源：AWS.xlsx", fontsize=12, color=MUTED)
     footer.text(1.0, 0.15, f"金额单位：{UNIT}", fontsize=12, color=MUTED, ha="right")
@@ -324,7 +331,7 @@ def _flatten_png(path: Path) -> Path:
     im = Image.open(path)
     if im.mode == "RGB":
         return path
-    bg = Image.new("RGB", im.size, (12, 12, 10))
+    bg = Image.new("RGB", im.size, (6, 18, 27))
     rgba = im.convert("RGBA")
     bg.paste(rgba, mask=rgba.split()[-1])
     bg.save(path, "PNG", optimize=True)
