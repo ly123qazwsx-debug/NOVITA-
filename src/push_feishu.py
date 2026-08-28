@@ -84,21 +84,27 @@ def _send_brief_and_images(
         sent = True
         print(f"已通过 Webhook 推送 {title} 正文")
 
+        chart_labels = {
+            "dashboard": "NOVITA 成本看板",
+            "aws_dashboard": "AWS 成本看板",
+        }
+
         for name in charts:
             img_key = image_keys.get(name)
+            label = chart_labels.get(name, title)
             if img_key:
                 try:
                     sender.send_webhook_message(
                         webhook_url,
                         _attach_sign({"msg_type": "image", "content": {"image_key": img_key}}, webhook_secret),
                     )
-                    print(f"已通过 Webhook 推送 {title} 图片 {name}")
+                    print(f"已通过 Webhook 推送 {label} 图片")
                 except Exception as exc:  # noqa: BLE001
                     print(f"图片 Webhook 失败: {exc}")
             elif upload_error and name == next(iter(charts)):
                 sender.send_webhook_message(
                     webhook_url,
-                    _attach_sign({"msg_type": "text", "content": {"text": f"{title} 看板图未发出：{upload_error}"}}, webhook_secret),
+                    _attach_sign({"msg_type": "text", "content": {"text": f"{label} 看板图未发出：{upload_error}"}}, webhook_secret),
                 )
 
     if not sent:

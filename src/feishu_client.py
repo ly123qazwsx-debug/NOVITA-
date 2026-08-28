@@ -100,8 +100,14 @@ class FeishuClient:
 
     def find_sheet_id_by_title(self, spreadsheet_token: str, title: str) -> str:
         meta = self.get_spreadsheet_meta(spreadsheet_token)
+        target = title.strip().strip("【】")
+
+        def _norm_name(name: str) -> str:
+            return (name or "").strip().strip("【】")
+
         for sheet in meta.get("sheets", []):
-            if sheet.get("title") == title:
+            sheet_title = sheet.get("title", "")
+            if sheet_title == title or _norm_name(sheet_title) == target:
                 return sheet["sheet_id"]
         available = [s.get("title") for s in meta.get("sheets", [])]
         raise ValueError(f"未找到工作表 '{title}'，可用工作表: {available}")
