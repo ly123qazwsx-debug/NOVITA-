@@ -187,7 +187,7 @@ def fetch_cost_data(client: FeishuClient, config: dict[str, Any]) -> pd.DataFram
 
 
 def _parse_pct(value: Any) -> float:
-    """表底环比率：支持 29%、-14%、以及飞书返回的 0.29 / -0.14。"""
+    """表底/对比表环比率：支持 29%、-14%、以及飞书返回的 0.29 / -0.14。"""
     raw = _norm(value)
     has_pct = "%" in raw or "％" in raw
     text = raw.replace("%", "").replace("％", "").replace("+", "").replace(",", "")
@@ -202,17 +202,59 @@ def _parse_pct(value: Any) -> float:
     return number
 
 
+def _normalize_pct_rate(rate: float, current: float, previous: float) -> float:
+    """把小数比例（0.08）规范为百分比（8），并与当期/上月金额交叉校验。"""
+    if rate != rate:
+        _, rate = _mom_from_amounts(current, previous)
+        return rate
+    if 0 < abs(rate) <= 1:
+        rate = rate * 100
+    computed, _ = _mom_from_amounts(current, previous)
+    if previous > 0 and computed == computed and abs(rate - computed) > 2 and abs(computed) > 0.5:
+        return computed
+    return rate
+
+
+def _mom_from_amounts(current: float, previous: float) -> tuple[float, float]:
+    change = current - previous
+    rate = (change / previous * 100) if previous else float("nan")
+    return rate, change
+
+
 def _summary_kind(label: str) -> str | None:
     text = label.replace(" ", "").replace("　", "")
-    if "环比率" in text:
+    if "环比率" in text or ("环比" in text and "率" in text):
         return "rate"
     if "上月同期" in text:
         return "previous"
-    if "当期合计" in text or ("当期" in text and "合计" in text):
+    if any(k in text for k in ("当期合计", "当月合计", "本期合计", "当期总计", "当月总计")):
+        return "current"
+    if ("当期" in text or "当月" in text or "本期" in text) and ("合计" in text or "总计" in text):
         return "current"
     if "环比" in text and "率" not in text:
         return "change"
     return None
+
+
+def _row_summary_meta(row: list[Any], col_index: dict[str, int]) -> tuple[str | None, int | None]:
+    """从整行扫描表底汇总标签（兼容合并单元格）。"""
+    primary = _norm(row[col_index["date"]] if col_index["date"] < len(row) else "")
+    kind = _summary_kind(primary)
+    label = primary
+    month_match = MONTH_RE.search(primary)
+    if kind is None:
+        for cell in row:
+            candidate = _norm(cell)
+            if not candidate:
+                continue
+            kind = _summary_kind(candidate)
+            if kind:
+                label = candidate
+                if not month_match:
+                    month_match = MONTH_RE.search(candidate)
+                break
+    month = int(month_match.group(1)) if month_match else None
+    return kind, month
 
 
 def _amounts_from_row(
@@ -258,13 +300,11 @@ def parse_sheet_mom_summary(raw_rows: list[list[Any]]) -> dict[int, dict[str, di
         if not row or all(_norm(c) == "" for c in row):
             continue
         month = _parse_int(row[1] if len(row) > 1 else "") or last_month
-        label = _norm(row[col_index["date"]] if col_index["date"] < len(row) else "")
-        label_month = MONTH_RE.search(label)
+        kind, label_month = _row_summary_meta(row, col_index)
         if label_month:
-            month = int(label_month.group(1))
+            month = label_month
         if month:
             last_month = month
-        kind = _summary_kind(label)
         if kind is None or month is None:
             continue
         block = result.setdefault(month, {})
@@ -291,13 +331,15 @@ def _overview_row_key(label: str) -> str | None:
 
 
 def _overview_numbers(row: list[Any], start: int) -> list[float]:
-    """标签后依次取当期、上月、环比、环比率。"""
+    """标签后依次取当期、上月、环比增减额、环比率。"""
     values: list[float] = []
     for cell in row[start + 1 :]:
         text = _norm(cell)
         if text == "":
             continue
-        if "%" in text or "％" in text:
+        if len(values) >= 3:
+            values.append(_parse_pct(cell))
+        elif "%" in text or "％" in text:
             values.append(_parse_pct(cell))
         else:
             values.append(_parse_amount(cell))
