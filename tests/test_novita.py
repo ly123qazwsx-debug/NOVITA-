@@ -227,6 +227,28 @@ def _mtd_frame() -> pd.DataFrame:
     return df
 
 
+def test_weekly_summary_and_anomalies():
+    from src.insights import (
+        build_weekly_summary,
+        detect_weekly_anomalies,
+        format_daily_brief,
+        format_weekly_section,
+    )
+
+    metrics = calculate_metrics(_mtd_frame(), TEST_CONFIG, as_of=AS_OF)
+    summary = build_weekly_summary(metrics)
+    assert summary
+    assert summary[0].startswith("【每周消耗汇总】")
+    assert "第1周" in summary[1]
+    anomalies = detect_weekly_anomalies(metrics)
+    assert anomalies
+    section = format_weekly_section(metrics)
+    assert "【周度异常】" in section
+    brief = format_daily_brief(metrics, ["机器本月新加12台：5090普*3台、4090*9台"])
+    assert "【每周消耗汇总】" in brief
+    assert "【周度异常】" in brief
+
+
 def test_daily_brief_matches_business_template():
     from src.insights import detect_recent_spikes, format_daily_brief, mom_cn
 
