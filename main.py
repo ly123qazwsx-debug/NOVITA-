@@ -100,32 +100,60 @@ def build_sample_aws_dataframe() -> tuple[pd.DataFrame, dict[str, str]]:
         "vpc": "VPC",
         "ec2_other": "EC2-其他",
     }
+    keys = list(labels.keys())
+
+    def _daily_value(month: int, day: int, *, current: bool) -> dict[str, float]:
+        if not current:
+            return {
+                "rds": 73.0,
+                "s3": 111.0,
+                "elb": 48.0,
+                "ecs": 49.0,
+                "ec2_instance": 28.0,
+                "amplify": 8.0,
+                "cloudfront": 21.0,
+                "elasticache": 16.3,
+                "vpc": 16.8,
+                "ec2_other": 9.0,
+            }
+        if day == 1:
+            rds = 137.4
+        elif day == 6:
+            rds = 153.1
+        elif day >= 20:
+            rds = 88.0 + (25 - day) * 0.3
+        else:
+            rds = 137.4 - (day - 1) * 1.5 + (8 if day == 6 else 0)
+        s3 = 98.0 + max(0, day - 14) * 1.9
+        elb = 44.0 + max(0, day - 14) * 1.35
+        amplify = 7.4 + max(0, day - 13) * 1.28
+        if day == 25:
+            amplify = 38.2
+        elif day == 26:
+            amplify = 39.0
+        return {
+            "rds": rds,
+            "s3": s3,
+            "elb": elb,
+            "ecs": 47.0,
+            "ec2_instance": 26.0,
+            "amplify": amplify,
+            "cloudfront": 18.0 if day < 20 else 12.0,
+            "elasticache": 16.8,
+            "vpc": 16.4,
+            "ec2_other": 7.0,
+        }
+
     rows = []
     for month_offset in (1, 0):
         year = 2026
         month = 8 if month_offset == 0 else 7
-        days = 25 if month_offset == 0 else 25
+        days = 26 if month_offset == 0 else 26
         for day in range(1, days + 1):
             d = date(year, month, day)
-            elb = 44.0 + (day - 15) * 1.2 if month_offset == 0 and day >= 15 else 44.0
-            s3 = 98.0 + (day - 15) * 1.5 if month_offset == 0 and day >= 15 else 98.0
-            rows.append(
-                {
-                    "date": d,
-                    "rds": 115 + day * 0.5,
-                    "s3": s3,
-                    "elb": elb,
-                    "ecs": 47.0,
-                    "ec2_instance": 26.0,
-                    "amplify": 7.0 + day * 0.8,
-                    "cloudfront": 18.0,
-                    "elasticache": 16.8,
-                    "vpc": 16.4,
-                    "ec2_other": 7.0,
-                }
-            )
+            values = _daily_value(month, day, current=(month_offset == 0))
+            rows.append({"date": d, **values})
     df = pd.DataFrame(rows)
-    keys = list(labels.keys())
     df["total"] = df[keys].sum(axis=1)
     df.attrs["service_labels"] = labels
     df.attrs["service_keys"] = keys
@@ -133,6 +161,26 @@ def build_sample_aws_dataframe() -> tuple[pd.DataFrame, dict[str, str]]:
         "month_total": {"current": 14116.08, "previous": 13418.12, "change": 697.96, "rate": 5},
         "daily_avg": {"current": 564.64, "previous": 536.72, "change": 27.92, "rate": 5},
         "forecast": {"current": 17148.69, "previous": 16462.11, "change": 686.58, "rate": 4},
+        "period_end": date(2026, 8, 26),
+    }
+    df.attrs["sheet_mom"] = {
+        8: {
+            "current": {
+                "rds": 2885.74, "s3": 2708.06, "elb": 1408.28, "ecs": 1168.06,
+                "ec2_instance": 650.88, "amplify": 525.82, "cloudfront": 457.13,
+                "elasticache": 420.31, "vpc": 411.38, "ec2_other": 179.04, "total": 14116.08,
+            },
+            "previous": {
+                "rds": 1824.86, "s3": 2771.28, "elb": 1205.69, "ecs": 1224.55,
+                "ec2_instance": 691.83, "amplify": 253.08, "cloudfront": 642.71,
+                "elasticache": 407.84, "vpc": 421.24, "ec2_other": 226.57, "total": 13418.12,
+            },
+            "rate": {
+                "rds": 58, "s3": -2, "elb": 17, "ecs": -5, "ec2_instance": -6,
+                "amplify": 108, "cloudfront": -29, "elasticache": 3, "vpc": -2,
+                "ec2_other": -21, "total": 5,
+            },
+        }
     }
     return df, labels
 
@@ -147,7 +195,7 @@ def run_novita(config: dict, client: FeishuClient | None, args, output_dir: Path
         print(f"NOVITA 已读取 {len(df)} 条，{df['date'].min()} ~ {df['date'].max()}")
 
     extra_notes = list(config.get("insights", {}).get("extra_notes") or [])
-    metrics = calculate_metrics(df, config)
+    metrics = calculate_metrics(df, config, as_of=args.as_of_date)
     print(
         f"NOVITA 统计：{metrics.current_period.start.month}/{metrics.current_period.start.day}"
         f"-{metrics.current_period.end.month}/{metrics.current_period.end.day}"
@@ -186,7 +234,7 @@ def run_aws(config: dict, client: FeishuClient | None, args, output_dir: Path) -
         print(f"AWS 已读取 {len(df)} 条，{df['date'].min()} ~ {df['date'].max()}")
 
     watch_items = list((config.get("aws") or {}).get("insights", {}).get("watch_services") or [])
-    metrics = calculate_aws_metrics(df, labels, config)
+    metrics = calculate_aws_metrics(df, labels, config, as_of=args.as_of_date)
     print(
         f"AWS 统计：{metrics.current_period.start.month}/{metrics.current_period.start.day}"
         f"-{metrics.current_period.end.month}/{metrics.current_period.end.day}"
@@ -221,6 +269,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--push", action="store_true")
     parser.add_argument("--no-push", action="store_true")
+    parser.add_argument("--as-of", dest="as_of_date", type=lambda s: date.fromisoformat(s), help="统计截止日期 YYYY-MM-DD（默认取表内最新日期）")
     args = parser.parse_args()
 
     load_dotenv()

@@ -22,6 +22,7 @@ from .data_fetcher import (
     resolve_spreadsheet_token,
 )
 from .feishu_client import FeishuClient
+from .report_date import parse_overview_period_end
 
 DATE_RE = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*日")
 SKIP_KEYWORDS = ("合计", "环比", "当期", "上月同期", "单位", "总消耗")
@@ -146,11 +147,17 @@ def _aws_overview_row_key(label: str) -> str | None:
 
 def parse_aws_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str, float]]:
     result: dict[str, dict[str, float]] = {}
+    year_hint = 2026
     for row in raw_rows:
         if not row:
             continue
+        if row[0] not in (None, ""):
+            y = _parse_int(row[0])
+            if y:
+                year_hint = y
         for i, cell in enumerate(row):
-            key = _aws_overview_row_key(_norm(cell))
+            label = _norm(cell)
+            key = _aws_overview_row_key(label)
             if not key:
                 continue
             nums = _overview_numbers(row, i)
@@ -162,6 +169,10 @@ def parse_aws_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str, f
                 computed, _ = _mom_from_amounts(current, previous)
                 rate = computed
             result[key] = {"current": current, "previous": previous, "change": change, "rate": rate}
+            if key == "month_total":
+                period_end = parse_overview_period_end(label, year_hint)
+                if period_end:
+                    result["period_end"] = period_end
             break
     return result
 

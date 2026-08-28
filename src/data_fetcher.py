@@ -353,11 +353,17 @@ def parse_sheet_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str,
     result: dict[str, dict[str, float]] = {}
     if not raw_rows:
         return result
+    year_hint = 2026
     for row in raw_rows:
         if not row:
             continue
+        if row[0] not in (None, ""):
+            y = _parse_int(row[0])
+            if y:
+                year_hint = y
         for i, cell in enumerate(row):
-            key = _overview_row_key(_norm(cell))
+            label = _norm(cell)
+            key = _overview_row_key(label)
             if not key:
                 continue
             nums = _overview_numbers(row, i)
@@ -371,6 +377,12 @@ def parse_sheet_overview_table(raw_rows: list[list[Any]]) -> dict[str, dict[str,
                 "change": change,
                 "rate": rate,
             }
+            if key == "month_total":
+                from .report_date import parse_overview_period_end
+
+                period_end = parse_overview_period_end(label, year_hint)
+                if period_end:
+                    result["period_end"] = period_end
             break
     return result
 

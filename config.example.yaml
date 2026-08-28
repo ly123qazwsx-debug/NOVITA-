@@ -37,6 +37,7 @@ report:
   currency_symbol: "$"
   timezone: "Asia/Shanghai"
   output_dir: "output"
+  # as_of: "2026-08-26"   # 可选；不填则自动取表内汇总标注或当月最新明细日（不超过昨天）
 
 # 每月可改的人工备注，会写进日报「其中」
 insights:
