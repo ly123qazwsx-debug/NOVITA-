@@ -56,6 +56,27 @@ SERVICE_KEY_HINTS: list[tuple[str, str]] = [
 ]
 
 
+def _normalize_footer_label(text: str) -> str:
+    return text.replace("【", "").replace("】", "").replace(" ", "").replace("　", "")
+
+
+def _is_total_column(name: str) -> bool:
+    text = _normalize_footer_label(_norm(name))
+    if not text:
+        return False
+    if "总消耗" in text or text in ("合计", "AWS合计"):
+        return True
+    if "总费用" in text:
+        return True
+    if text.upper().startswith("AWS") and ("总" in text or "TOTAL" in text.upper()):
+        return True
+    return False
+
+
+def _is_billable_service(label: str) -> bool:
+    return not _is_total_column(label)
+
+
 def _service_key(label: str) -> str:
     compact = label.replace(" ", "").replace("　", "").replace("-", "").replace("_", "")
     compact_upper = compact.upper()
@@ -96,6 +117,9 @@ def _find_aws_header(
                     date_idx = i
                     continue
                 if "总消耗" in name or name in ("合计", "AWS合计"):
+                    total_idx = i
+                    continue
+                if _is_total_column(name):
                     total_idx = i
                     continue
                 key = _service_key(name)
@@ -167,6 +191,12 @@ def parse_aws_mom_summary(
         kind, label_month, label_col_idx = _row_summary_meta(row, {"date": date_idx})
         if label_month:
             month = label_month
+        if month is None:
+            for cell in row:
+                m = MONTH_RE.search(_norm(cell))
+                if m:
+                    month = int(m.group(1))
+                    break
         if month:
             last_month = month
         if kind is None or month is None:
@@ -182,6 +212,24 @@ def parse_aws_mom_summary(
             total_idx=total_idx,
             index_offset=index_offset,
         )
+
+    # 兜底：第 35 行 A 列【上月同期】
+    if raw_rows and len(raw_rows) >= 35:
+        row35 = raw_rows[34]
+        label = _normalize_footer_label(_norm(row35[0] if row35 else ""))
+        if label == "上月同期" or "上月同期" in label:
+            month = last_month
+            for cell in row35:
+                m = MONTH_RE.search(_norm(cell))
+                if m:
+                    month = int(m.group(1))
+                    break
+            if month:
+                block = result.setdefault(month, {})
+                if "previous" not in block:
+                    block["previous"] = _amounts_from_service_row(
+                        row35, services, total_idx=total_idx, index_offset=0,
+                    )
     return result
 
 

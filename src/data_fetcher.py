@@ -222,7 +222,7 @@ def _mom_from_amounts(current: float, previous: float) -> tuple[float, float]:
 
 
 def _summary_kind(label: str) -> str | None:
-    text = label.replace(" ", "").replace("　", "")
+    text = label.replace("【", "").replace("】", "").replace(" ", "").replace("　", "")
     if "环比率" in text or ("环比" in text and "率" in text):
         return "rate"
     if text in ("上月同期", "上月同期合计", "上月同期合计值", "上月同期合计数据"):
