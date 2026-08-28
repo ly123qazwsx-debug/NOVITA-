@@ -292,10 +292,21 @@ def main() -> int:
         client = FeishuClient(app_id, app_secret)
 
     try:
+        errors: list[str] = []
         if args.report in ("novita", "all"):
-            run_novita(config, client, args, output_dir)
+            try:
+                run_novita(config, client, args, output_dir)
+            except Exception as exc:
+                errors.append(f"NOVITA: {exc}")
+                print(f"NOVITA 报告失败: {exc}")
         if args.report in ("aws", "all"):
-            run_aws(config, client, args, output_dir)
+            try:
+                run_aws(config, client, args, output_dir)
+            except Exception as exc:
+                errors.append(f"AWS: {exc}")
+                print(f"AWS 报告失败: {exc}")
+        if errors:
+            raise RuntimeError("；".join(errors))
     except Exception as exc:
         print(f"报告生成失败: {exc}")
         return 1
