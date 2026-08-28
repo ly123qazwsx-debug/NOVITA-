@@ -11,6 +11,7 @@ from matplotlib.patches import FancyBboxPatch
 from matplotlib.ticker import FuncFormatter
 
 from .aws_metrics import AwsReportMetrics
+from .aws_sheet_analysis import AwsSheetAnalysis
 
 # 配色从用户上传模板像素采样（冷色深蓝底 + 冷白字 + 粉/绿涨跌）
 BG = "#06121B"
@@ -271,7 +272,7 @@ def _plot_service_trend(ax, metrics: AwsReportMetrics, svc, rank: int) -> None:
     ax.set_title(f"No.{rank} {svc.label}", fontsize=13, color=TITLE, loc="left", pad=8, fontweight="bold")
 
 
-def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
+def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path, *, analysis: AwsSheetAnalysis | None = None) -> Path:
     _setup_font()
     output_dir.mkdir(parents=True, exist_ok=True)
     p = metrics.current_period
@@ -320,7 +321,7 @@ def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path) -> Path:
     footer = fig.add_subplot(outer[5])
     footer.axis("off")
     footer.set_facecolor(BG)
-    footer.text(0, 0.65, f"口径说明：明细区间为 {_period_range(metrics)}；汇总数据来源于 AWS.xlsx。趋势图仅展示排名前十各计费项，不含 AWS 总费用。", fontsize=12, color=MUTED)
+    footer.text(0, 0.65, _footer_note(metrics, analysis), fontsize=12, color=MUTED)
     footer.text(0, 0.15, "数据来源：AWS.xlsx", fontsize=12, color=MUTED)
     footer.text(1.0, 0.15, f"金额单位：{UNIT}", fontsize=12, color=MUTED, ha="right")
 
@@ -343,6 +344,23 @@ def _flatten_png(path: Path) -> Path:
     return path
 
 
-def generate_aws_charts(metrics: AwsReportMetrics, output_dir: Path) -> dict[str, Path]:
+def _footer_note(metrics: AwsReportMetrics, analysis: AwsSheetAnalysis | None) -> str:
+    period = _period_range(metrics)
+    if analysis:
+        return (
+            f"口径说明：区间 {period}。"
+            f"KPI←{analysis.kpi_source}；"
+            f"环比表←{analysis.mom_source}；"
+            f"趋势←{analysis.trend_source}。"
+        )
+    return f"口径说明：明细区间为 {period}；趋势图仅展示排名前十各计费项，不含 AWS 总费用。"
+
+
+def generate_aws_charts(
+    metrics: AwsReportMetrics,
+    output_dir: Path,
+    *,
+    analysis: AwsSheetAnalysis | None = None,
+) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    return {"aws_dashboard": plot_aws_dashboard(metrics, output_dir)}
+    return {"aws_dashboard": plot_aws_dashboard(metrics, output_dir, analysis=analysis)}
