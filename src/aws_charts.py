@@ -1,4 +1,4 @@
-"""AWS 深色看板：对齐业务上传模板（3 KPI + Top10 六列表 + 前十项分项日趋势）。"""
+"""AWS 深色看板：严格对齐用户上传模板（3 KPI + Top10 表 + 两组日趋势）。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from matplotlib.ticker import FuncFormatter
 from .aws_metrics import AwsReportMetrics
 from .aws_sheet_analysis import AwsSheetAnalysis
 
-# 配色从用户上传模板像素采样（冷色深蓝底 + 冷白字 + 粉/绿涨跌）
+# 配色从用户上传模板像素采样
 BG = "#06121B"
 CARD = "#0D202D"
 CARD_ALT = "#112938"
@@ -21,15 +21,15 @@ CARD_LINE = "#183746"
 TEXT = "#EDF4F7"
 MUTED = "#9EB0B8"
 GRID = "#1C313E"
-ACCENT = "#F283C1"   # KPI 顶栏、上涨色
-TITLE = "#EDF4F7"    # 主标题 / 分区标题
+ACCENT = "#F283C1"
+TITLE = "#EDF4F7"
 UP = "#F283C1"
 DOWN = "#67DDB4"
 HEADER = "#112938"
 TABLE_EDGE = "#183746"
 LABEL_BG = "#0D202D"
-UNIT = "美元"
-UNIT_TAG = "单位：美元"
+UNIT = "USD"
+UNIT_TAG = "单位：USD"
 
 SERVICE_COLORS = {
     "rds": "#5DA5E8",
@@ -146,7 +146,7 @@ def _draw_kpi(ax, item: dict, metrics: AwsReportMetrics) -> None:
     titles = {
         "month_total": ("当月总消耗", _period_range(metrics)),
         "daily_avg": ("日消耗", "本期日均"),
-        "forecast": (f"预计{metrics.current_period.end.month}月总消耗", "按工作日口径预估"),
+        "forecast": (f"预计{metrics.current_period.end.month}月总消耗", "按工作簿预估"),
     }
     title, subtitle = titles.get(item["key"], (item.get("label", ""), ""))
     ax.set_xlim(0, 1)
@@ -184,9 +184,15 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
     ax.set_facecolor(BG)
     p = metrics.current_period
     sym = metrics.currency_symbol
-    ax.set_title(
+    ax.text(
+        0, 1.02,
         f"累计消耗前10项 ｜ 分项环比明细 ｜ {UNIT_TAG}",
-        fontsize=20, color=TITLE, loc="left", pad=10, fontweight="bold",
+        fontsize=20, color=TITLE, fontweight="bold", transform=ax.transAxes, va="bottom",
+    )
+    ax.text(
+        0, 0.97,
+        "对比区间：本期明细与上月同期",
+        fontsize=13, color=MUTED, transform=ax.transAxes, va="bottom",
     )
 
     rows = metrics.top10
@@ -218,6 +224,7 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
         cellLoc="center",
         colColours=[HEADER] * 6,
         cellColours=colors,
+        bbox=[0, 0.02, 1, 0.90],
     )
     table.auto_set_font_size(False)
     table.set_fontsize(13)
@@ -237,52 +244,72 @@ def _plot_top10_table(ax, metrics: AwsReportMetrics) -> None:
 
 
 def _date_labels(dates, month: int) -> list[str]:
-    return [f"{month}/{int(d.day)}" for d in dates]
+    return [f"{month}月{int(d.day)}日" for d in dates]
 
 
 def _service_color(key: str, index: int) -> str:
     return SERVICE_COLORS.get(key, list(SERVICE_COLORS.values())[index % len(SERVICE_COLORS)])
 
 
-def _plot_service_trend(ax, metrics: AwsReportMetrics, svc, rank: int) -> None:
-    """单项成本日趋势（Top10 每项一张）。"""
+def _plot_trend(ax, metrics: AwsReportMetrics, services: list, title: str) -> None:
+    """排名 1-5 / 6-10 多线日趋势（模板样式，不含 AWS 总费用）。"""
     df = metrics.trend_df.sort_values("date")
     _style_ax(ax)
-    if df.empty or svc.key not in df.columns:
-        ax.set_title(f"No.{rank} {svc.label}", loc="left", color=TITLE, fontweight="bold", fontsize=13)
+    if df.empty or not services:
+        ax.set_title(title, loc="left", color=TITLE, fontweight="bold")
         return
 
     month = metrics.current_period.end.month
     x = np.arange(len(df))
     labels = _date_labels(df["date"], month)
-    color = _service_color(svc.key, rank - 1)
-    series = df[svc.key]
-    ax.plot(x, series, color=color, linewidth=2.2, marker="o", markersize=4.5, zorder=3)
-    ymax = float(series.dropna().max()) if not series.dropna().empty else 1.0
-    for j, (xi, value) in enumerate(zip(x, series)):
-        if value != value:
+    ymax = 1.0
+    handles, labels_leg = [], []
+
+    for i, svc in enumerate(services):
+        color = _service_color(svc.key, i)
+        if svc.key not in df.columns:
             continue
-        stagger = (0, 6 + (j % 2) * 3)
-        _value_label(ax, xi, float(value), _fmt_amt(float(value)), color, offset=stagger, fontsize=6.5)
+        ax.plot(x, df[svc.key], color=color, linewidth=2.4, marker="o", markersize=5.0, label=svc.label, zorder=3)
+        series = df[svc.key].dropna()
+        if not series.empty:
+            ymax = max(ymax, float(series.max()))
+        for j, (xi, value) in enumerate(zip(x, df[svc.key])):
+            if value != value:
+                continue
+            stagger = (0, 7 + (i % 4) * 3 + (j % 2) * 2)
+            _value_label(ax, xi, float(value), _fmt_amt(float(value)), color, offset=stagger, fontsize=7.0)
+        handles.append(ax.lines[-1])
+        labels_leg.append(svc.label)
+
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
+    ax.set_xticklabels(labels, fontsize=10)
     ax.set_xlim(-0.5, len(x) - 0.5)
-    ax.set_ylim(0, ymax * 1.35)
+    ax.set_ylim(0, ymax * 1.42)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
-    ax.set_title(f"No.{rank} {svc.label}", fontsize=13, color=TITLE, loc="left", pad=8, fontweight="bold")
+    ax.set_ylabel(f"金额（{UNIT}）", fontsize=13, color=MUTED)
+    ax.set_title(title, fontsize=18, color=TITLE, loc="left", pad=26, fontweight="bold")
+    if handles:
+        leg = ax.legend(handles, labels_leg, loc="lower left", bbox_to_anchor=(0, 1.01), ncol=min(5, len(handles)), fontsize=11, frameon=True)
+        if leg:
+            leg.get_frame().set_facecolor(CARD)
+            leg.get_frame().set_edgecolor(CARD_LINE)
+            for text in leg.get_texts():
+                text.set_color(TEXT)
 
 
 def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path, *, analysis: AwsSheetAnalysis | None = None) -> Path:
     _setup_font()
     output_dir.mkdir(parents=True, exist_ok=True)
     p = metrics.current_period
-    top10 = metrics.top10
+    top5 = metrics.top10[:5]
+    rest = metrics.top10[5:10]
 
-    fig = plt.figure(figsize=(22.0, 30.0), facecolor=BG)
+    # 模板原图 1570×2000
+    fig = plt.figure(figsize=(15.7, 20.0), facecolor=BG)
     outer = GridSpec(
         6, 1,
-        height_ratios=[0.45, 0.82, 1.55, 0.18, 4.65, 0.22],
-        hspace=0.24,
+        height_ratios=[0.52, 0.88, 1.65, 2.55, 2.35, 0.28],
+        hspace=0.22,
         top=0.975,
         bottom=0.03,
         left=0.06,
@@ -292,41 +319,43 @@ def plot_aws_dashboard(metrics: AwsReportMetrics, output_dir: Path, *, analysis:
     title_ax = fig.add_subplot(outer[0])
     title_ax.axis("off")
     title_ax.set_facecolor(BG)
-    title_ax.text(0, 0.55, f"AWS {p.end.month}月成本概览（截至{p.end.month}/{p.end.day}）", fontsize=36, fontweight="bold", color=TITLE, va="center")
-    title_ax.text(1.0, 0.55, "前10项消耗与分项日趋势均按实际数据生成", fontsize=15, color=MUTED, ha="right", va="center")
+    title_ax.text(
+        0, 0.72,
+        f"AWS {p.end.month}月成本概览 (截至 {p.end.month}/{p.end.day})",
+        fontsize=34, fontweight="bold", color=TITLE, va="center",
+    )
+    title_ax.text(
+        0, 0.22,
+        f"统计区间：{_period_range(metrics)} · {UNIT_TAG}",
+        fontsize=14, color=MUTED, va="center",
+    )
+    title_ax.text(
+        1.0, 0.55,
+        "成本前十项 · 日度趋势详情",
+        fontsize=14, color=MUTED, ha="right", va="center",
+    )
 
     gs_kpi = outer[1].subgridspec(1, 3, wspace=0.08)
     for i, item in enumerate(metrics.overview):
         _draw_kpi(fig.add_subplot(gs_kpi[0, i]), item, metrics)
 
     _plot_top10_table(fig.add_subplot(outer[2]), metrics)
-
-    trend_title_ax = fig.add_subplot(outer[3])
-    trend_title_ax.axis("off")
-    trend_title_ax.set_facecolor(BG)
-    trend_title_ax.text(
-        0, 0.5,
-        "排名前十 ｜ 分项成本日趋势（每项单独展示，不含 AWS 总费用）",
-        fontsize=18,
-        color=TITLE,
-        va="center",
-        fontweight="bold",
-    )
-
-    gs_trend = outer[4].subgridspec(5, 2, hspace=0.55, wspace=0.18)
-    for i, svc in enumerate(top10):
-        row, col = divmod(i, 2)
-        _plot_service_trend(fig.add_subplot(gs_trend[row, col]), metrics, svc, i + 1)
+    _plot_trend(fig.add_subplot(outer[3]), metrics, top5, "排名 1-5 ｜ 主要成本趋势")
+    _plot_trend(fig.add_subplot(outer[4]), metrics, rest, "排名 6-10 ｜ 其余成本趋势")
 
     footer = fig.add_subplot(outer[5])
     footer.axis("off")
     footer.set_facecolor(BG)
-    footer.text(0, 0.65, _footer_note(metrics, analysis), fontsize=12, color=MUTED)
+    footer.text(
+        0, 0.65,
+        f"口径说明：明细区间为 {_period_range(metrics)}；汇总数据来源于 AWS.xlsx。所有趋势点均显示金额。",
+        fontsize=12, color=MUTED,
+    )
     footer.text(0, 0.15, "数据来源：AWS.xlsx", fontsize=12, color=MUTED)
     footer.text(1.0, 0.15, f"金额单位：{UNIT}", fontsize=12, color=MUTED, ha="right")
 
     path = output_dir / "aws_dashboard.png"
-    fig.savefig(path, dpi=165, facecolor=fig.get_facecolor())
+    fig.savefig(path, dpi=100, facecolor=fig.get_facecolor())
     plt.close(fig)
     return _flatten_png(path)
 
@@ -342,18 +371,6 @@ def _flatten_png(path: Path) -> Path:
     bg.paste(rgba, mask=rgba.split()[-1])
     bg.save(path, "PNG", optimize=True)
     return path
-
-
-def _footer_note(metrics: AwsReportMetrics, analysis: AwsSheetAnalysis | None) -> str:
-    period = _period_range(metrics)
-    if analysis:
-        return (
-            f"口径说明：区间 {period}。"
-            f"KPI←{analysis.kpi_source}；"
-            f"环比表←{analysis.mom_source}；"
-            f"趋势←{analysis.trend_source}。"
-        )
-    return f"口径说明：明细区间为 {period}；趋势图仅展示排名前十各计费项，不含 AWS 总费用。"
 
 
 def generate_aws_charts(
