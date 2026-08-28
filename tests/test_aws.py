@@ -26,6 +26,25 @@ AWS_ROWS = [
 ]
 
 
+def test_parse_aws_rows_without_year_month_columns():
+    """真实 AWS 表可能只有「8月1日」列，没有年/月列；不能把金额误当年份。"""
+    rows = [
+        ["单位: 美元", "RDS-数据库", "S3", "ELB-负载均衡", "ECS", "EC2 实例", "Amplify", "CloudFront", "ElasticCache", "VPC", "EC2-其他", "AWS 总消耗"],
+        ["8月1日", 137.4, 98.0, 44.0, 47.0, 26.0, 7.4, 18.0, 16.8, 16.4, 7.0, 417.0],
+        ["8月26日", 87.0, 128.0, 65.0, 47.0, 26.0, 39.0, 12.0, 16.8, 16.4, 7.0, 444.0],
+        ["当期总消耗（8.1-8.26）", 14116.08, 13418.12, 697.96, "5%"],
+        ["日消耗", 564.64, 536.72, 27.92, "5%"],
+        ["预计8月总消耗", 17148.69, 16462.11, 686.58, "4%"],
+    ]
+    df, labels = parse_aws_rows(rows)
+    assert len(df) == 2
+    assert df["date"].min().month == 8
+    assert df["date"].min().day == 1
+    assert df["date"].max().day == 26
+    assert df["date"].max().year >= 2020
+    assert "rds" in labels
+
+
 def test_parse_aws_rows_and_overview():
     df, labels = parse_aws_rows(AWS_ROWS)
     assert "rds" in labels
